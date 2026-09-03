@@ -50,6 +50,16 @@
             font-weight: 800;
             border-radius: 1rem;
         }
+        .correct-answer {
+            background-color: #d7ffb8 !important;
+            border-color: #58cc02 !important;
+            color: #277000 !important;
+        }
+        .wrong-answer {
+            background-color: #ffdfe0 !important;
+            border-color: #ff4b4b !important;
+            color: #ea2b2b !important;
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col justify-between">
@@ -95,6 +105,7 @@
         window.allAvailableWords = [];
         window.currentIndex = 0;
         window.score = 0;
+        window.langStartTime = null;
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -209,9 +220,56 @@
             `;
         }
 
-        // --- VÝBĚR KATEGORIÍ ---
+        // --- SLEDování ČASU A STATISTIKY UŽIVATELŮ ---
         window.selectLanguage = async function(lang) {
             window.currentLang = lang;
+            window.langStartTime = Date.now();
+
+            if(window.currentUser) {
+                const username = window.currentUser.email.split('@')[0];
+                const userRef = ref(db, `statistiky/${lang}/uzivatele/${username}`);
+                const snap = await get(userRef);
+                const data = snap.val();
+                
+                if(!data || !data.prvniNavstiva) {
+                    // První návštěva se uloží hned, čas ověříme později
+                    await update(userRef, {
+                        posledniAktivita: Date.now(),
+                        online: true
+                    });
+                } else {
+                    await update(userRef, {
+                        posledniAktivita: Date.now(),
+                        online: true
+                    });
+                }
+            }
+
+            // Spustíme interval pro kontrolu 15 sekund
+            if(window.activityInterval) clearInterval(window.activityInterval);
+            window.activityInterval = setInterval(async () => {
+                if(window.currentUser && window.currentLang === lang && window.langStartTime) {
+                    const elapsed = (Date.now() - window.langStartTime) / 1000;
+                    if(elapsed >= 15) {
+                        const username = window.currentUser.email.split('@')[0];
+                        const userRef = ref(db, `statistiky/${lang}/uzivatele/${username}`);
+                        const snap = await get(userRef);
+                        const data = snap.val();
+                        if(!data || !data.prvniNavstiva) {
+                            await update(userRef, {
+                                prvniNavstiva: new Date().toLocaleString('cs-CZ'),
+                                posledniAktivita: Date.now(),
+                                online: true
+                            });
+                        }
+                    }
+                }
+            }, 5000);
+
+            renderCategoryScreen(lang);
+        }
+
+        window.renderCategoryScreen = async function(lang) {
             const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
             let categories = snapshot.val() || { "Pozdravy": {}, "Všeobecné": {} };
             
@@ -231,10 +289,68 @@
             document.getElementById('app').innerHTML = `
                 <div class="max-w-xl w-full">
                     <button onclick="loadDashboard()" class="text-gray-400 font-bold mb-4 hover:text-gray-600">&larr; Zpět na jazyky</button>
+                    
+                    <div onclick="openLanguageStats()" class="duo-card bg-sky-50 p-4 mb-6 cursor-pointer hover:bg-sky-100 flex items-center justify-between border-sky-200">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-sky-400 rounded-full flex items-center justify-center text-2xl text-white shadow">👤</div>
+                            <div>
+                               <h3 class="font-black text-sky-700 text-lg">Statistiky učících se</h3>
+                               <p class="text-xs text-gray-500 font-bold">Klikni pro zobrazení uživatelů a aktivity</p>
+                            </div>
+                        </div>
+                        <span class="text-sky-500 font-black text-xl">&rarr;</span>
+                    </div>
+
                     <h2 class="text-3xl font-black mb-6 text-gray-700 capitalize">Jazyk: ${lang}</h2>
                     <div class="space-y-4">
                         ${catHtml}
                     </div>
+                </div>
+            `;
+        }
+
+        window.openLanguageStats = async function() {
+            const lang = window.currentLang;
+            const snap = await get(ref(db, `statistiky/${lang}/uzivatele`));
+            const users = snap.val() || {};
+
+            let usersListHtml = '';
+            let activeCount = 0;
+            const now = Date.now();
+
+            for(let username in users) {
+                const uData = users[username];
+                // Pokud byla aktivita v posledních 60 sekundách, považujeme ho za online
+                const isOnline = uData.posledniAktivita && (now - uData.posledniAktivita < 60000);
+                const statusBadge = isOnline ? '<span class="text-green-500 font-bold text-xs bg-green-50 px-2 py-1 rounded-full border border-green-200">● Online</span>' : '<span class="text-gray-400 font-bold text-xs bg-gray-100 px-2 py-1 rounded-full border border-gray-200">○ Offline</span>';
+                
+                if(uData.prvniNavstiva) {
+                    activeCount++;
+                    usersListHtml += `
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 flex justify-between items-center">
+                            <div>
+                                <p class="font-black text-gray-700 text-md">${username}</p>
+                                <p class="text-xs text-gray-400 font-semibold">Aktivní od: ${uData.prvniNavstiva}</p>
+                            </div>
+                            <div>${statusBadge}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            if(!usersListHtml) {
+                usersListHtml = `<p class="text-gray-400 text-sm italic text-center py-4">Zatím žádný uživatel nestrávil na tomto jazyku více než 15 sekund.</p>`;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-lg w-full shadow-lg relative">
+                    <button onclick="renderCategoryScreen('${lang}')" class="absolute top-4 left-4 text-gray-400 font-bold hover:text-gray-600">✕</button>
+                    <h2 class="text-2xl font-black mb-2 text-gray-700 text-center">Statistiky: ${lang}</h2>
+                    <p class="text-center text-sky-600 font-bold mb-6">Celkem uživatelů (více než 15s): ${activeCount}</p>
+                    <div class="space-y-3 max-h-64 overflow-y-auto pr-2 mb-6">
+                        ${usersListHtml}
+                    </div>
+                    <button onclick="renderCategoryScreen('${lang}')" class="w-full py-3 duo-btn-green text-md">Zpět</button>
                 </div>
             `;
         }
@@ -244,7 +360,7 @@
             
             document.getElementById('app').innerHTML = `
                 <div class="max-w-xl w-full text-center">
-                    <button onclick="selectLanguage('${window.currentLang}')" class="text-gray-400 font-bold mb-4 hover:text-gray-600 block text-left">&larr; Zpět na kategorie</button>
+                    <button onclick="renderCategoryScreen('${window.currentLang}')" class="text-gray-400 font-bold mb-4 hover:text-gray-600 block text-left">&larr; Zpět na kategorie</button>
                     <div class="duo-card bg-white p-8 shadow-md">
                         <h2 class="text-3xl font-black mb-2 text-gray-700">${category}</h2>
                         <p class="text-gray-400 mb-8">Vyber si režim učení:</p>
@@ -310,6 +426,13 @@
 
         window.renderExercise = function() {
             const items = window.learningItems;
+            
+            // Karta učení vymazaná na konci - rovnou návrat do kategorií
+            if(window.currentMode === 'uceni' && window.currentIndex >= items.length) {
+                openCategory(window.currentCategory);
+                return;
+            }
+
             if(window.currentIndex >= items.length) {
                 renderFinished();
                 return;
@@ -331,7 +454,10 @@
                         <p class="text-2xl font-bold text-gray-700 mb-6">${translationToShow}</p>
                         <button onclick="speakWord('${textToShow}')" class="bg-white text-sky-500 font-bold px-6 py-3 rounded-xl shadow border-2 border-sky-200 hover:bg-sky-100">🔊 Poslechnout</button>
                     </div>
-                    <button onclick="window.currentIndex++; renderExercise();" class="w-full py-3 duo-btn-green text-lg">Další &rarr;</button>
+                    <div class="flex gap-3">
+                        ${window.currentIndex > 0 ? `<button onclick="window.currentIndex--; renderExercise();" class="w-1/3 py-3 duo-card font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">&larr; Zpět</button>` : ''}
+                        <button onclick="window.currentIndex++; renderExercise();" class="flex-grow py-3 duo-btn-green text-lg">Další &rarr;</button>
+                    </div>
                 `;
             } else if(mode === 'poslech') {
                 let options = [currentItem.preklad];
@@ -349,10 +475,10 @@
                     <h3 class="text-xl font-bold mb-4 text-gray-600">Poslouchej a vyber překlad</h3>
                     <button onclick="speakWord('${currentItem.slovo}')" class="mb-6 bg-sky-100 text-sky-500 font-black p-6 rounded-full text-3xl shadow">🔊 Přehrát slovo</button>
                     <p class="text-lg font-bold mb-4">Co znamená toto slovo?</p>
-                    <div class="grid grid-cols-1 gap-3">
-                        <button onclick="checkAnswer('${options[0]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${options[0]}</button>
-                        <button onclick="checkAnswer('${options[1]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${options[1]}</button>
-                        <button onclick="checkAnswer('${options[2]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${options[2]}</button>
+                    <div class="grid grid-cols-1 gap-3" id="quizOptionsContainer">
+                        <button onclick="checkCustomAnswer(this, '${options[0]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[0]}</button>
+                        <button onclick="checkCustomAnswer(this, '${options[1]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[1]}</button>
+                        <button onclick="checkCustomAnswer(this, '${options[2]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[2]}</button>
                     </div>
                 `;
             } else if(mode === 'psani') {
@@ -419,15 +545,31 @@
             }
         }
 
-        window.checkAnswer = function(selected, correct) {
+        // Vlastní vizuální vyhodnocení kvízu (červená / zelená bez systémového alertu)
+        window.checkCustomAnswer = function(btnElement, selected, correct) {
+            const container = document.getElementById('quizOptionsContainer');
+            const buttons = container.getElementsByTagName('button');
+            
+            // Zablokovat další kliknutí
+            for(let b of buttons) {
+                b.style.pointerEvents = 'none';
+                if(b.innerText.trim() === correct.trim()) {
+                    b.classList.add('correct-answer');
+                }
+            }
+
             if(selected === correct) {
                 window.score++;
-                alert("Správně! 🎉");
+                btnElement.classList.add('correct-answer');
             } else {
-                alert(`Chyba. Správně bylo: ${correct}`);
+                btnElement.classList.add('wrong-answer');
             }
-            window.currentIndex++;
-            renderExercise();
+
+            // Počkat 1.2 sekundy a posunout na další
+            setTimeout(() => {
+                window.currentIndex++;
+                renderExercise();
+            }, 1200);
         }
 
         window.checkTypedAnswer = function(correct) {
