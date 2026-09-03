@@ -220,7 +220,7 @@
             `;
         }
 
-        // --- SLEDování ČASU A STATISTIKY UŽIVATELŮ ---
+        // --- SLEDOVÁNÍ ČASU A STATISTIKY UŽIVATELŮ ---
         window.selectLanguage = async function(lang) {
             window.currentLang = lang;
             window.langStartTime = Date.now();
@@ -232,7 +232,6 @@
                 const data = snap.val();
                 
                 if(!data || !data.prvniNavstiva) {
-                    // První návštěva se uloží hned, čas ověříme později
                     await update(userRef, {
                         posledniAktivita: Date.now(),
                         online: true
@@ -245,7 +244,6 @@
                 }
             }
 
-            // Spustíme interval pro kontrolu 15 sekund
             if(window.activityInterval) clearInterval(window.activityInterval);
             window.activityInterval = setInterval(async () => {
                 if(window.currentUser && window.currentLang === lang && window.langStartTime) {
@@ -286,11 +284,18 @@
                 `;
             }
 
+            // Generování speciálních písmen podle jazyka (kliknutím se zkopírují do schránky)
+            let specialChars = lang === 'polština' ? ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż'] : ['ä', 'ö', 'ü', 'ß'];
+            let charsHtml = '';
+            specialChars.forEach(ch => {
+                charsHtml += `<button onclick="copySpecialChar('${ch}')" class="px-3 py-1.5 duo-card bg-white font-black text-sky-600 hover:bg-sky-50 text-sm shadow-sm" title="Kliknutím zkopíruješ">${ch}</button>`;
+            });
+
             document.getElementById('app').innerHTML = `
                 <div class="max-w-xl w-full">
                     <button onclick="loadDashboard()" class="text-gray-400 font-bold mb-4 hover:text-gray-600">&larr; Zpět na jazyky</button>
                     
-                    <div onclick="openLanguageStats()" class="duo-card bg-sky-50 p-4 mb-6 cursor-pointer hover:bg-sky-100 flex items-center justify-between border-sky-200">
+                    <div onclick="openLanguageStats()" class="duo-card bg-sky-50 p-4 mb-4 cursor-pointer hover:bg-sky-100 flex items-center justify-between border-sky-200">
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 bg-sky-400 rounded-full flex items-center justify-center text-2xl text-white shadow">👤</div>
                             <div>
@@ -301,12 +306,33 @@
                         <span class="text-sky-500 font-black text-xl">&rarr;</span>
                     </div>
 
+                    <div class="duo-card bg-gray-50 p-4 mb-6 border-gray-200 text-center">
+                        <p class="text-xs font-black text-gray-400 uppercase tracking-wider mb-2">Speciální znaky (${lang}) — kliknutím zkopíruješ:</p>
+                        <div class="flex justify-center gap-2 flex-wrap" id="specialCharsBox">
+                            ${charsHtml}
+                        </div>
+                    </div>
+
                     <h2 class="text-3xl font-black mb-6 text-gray-700 capitalize">Jazyk: ${lang}</h2>
                     <div class="space-y-4">
                         ${catHtml}
                     </div>
                 </div>
             `;
+        }
+
+        window.copySpecialChar = function(char) {
+            navigator.clipboard.writeText(char);
+            // Krátké upozornění přímo na stránce
+            const box = document.getElementById('specialCharsBox');
+            const notice = document.createElement('div');
+            notice.className = "absolute bg-gray-800 text-white text-xs font-bold px-2 py-1 rounded shadow-lg -mt-10";
+            notice.style.left = "50%";
+            notice.style.transform = "translateX(-50%)";
+            notice.innerText = `Zkopírováno: ${char}`;
+            box.style.position = "relative";
+            box.appendChild(notice);
+            setTimeout(() => notice.remove(), 1000);
         }
 
         window.openLanguageStats = async function() {
@@ -320,7 +346,6 @@
 
             for(let username in users) {
                 const uData = users[username];
-                // Pokud byla aktivita v posledních 60 sekundách, považujeme ho za online
                 const isOnline = uData.posledniAktivita && (now - uData.posledniAktivita < 60000);
                 const statusBadge = isOnline ? '<span class="text-green-500 font-bold text-xs bg-green-50 px-2 py-1 rounded-full border border-green-200">● Online</span>' : '<span class="text-gray-400 font-bold text-xs bg-gray-100 px-2 py-1 rounded-full border border-gray-200">○ Offline</span>';
                 
@@ -427,7 +452,6 @@
         window.renderExercise = function() {
             const items = window.learningItems;
             
-            // Karta učení vymazaná na konci - rovnou návrat do kategorií
             if(window.currentMode === 'uceni' && window.currentIndex >= items.length) {
                 openCategory(window.currentCategory);
                 return;
@@ -545,12 +569,10 @@
             }
         }
 
-        // Vlastní vizuální vyhodnocení kvízu (červená / zelená bez systémového alertu)
         window.checkCustomAnswer = function(btnElement, selected, correct) {
             const container = document.getElementById('quizOptionsContainer');
             const buttons = container.getElementsByTagName('button');
             
-            // Zablokovat další kliknutí
             for(let b of buttons) {
                 b.style.pointerEvents = 'none';
                 if(b.innerText.trim() === correct.trim()) {
@@ -565,7 +587,6 @@
                 btnElement.classList.add('wrong-answer');
             }
 
-            // Počkat 1.2 sekundy a posunout na další
             setTimeout(() => {
                 window.currentIndex++;
                 renderExercise();
