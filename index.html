@@ -92,7 +92,7 @@
         window.currentCategory = '';
         window.currentMode = 'poslech'; 
         window.learningItems = [];
-        window.allAvailableWords = []; // Seznam pro generování špatných možností
+        window.allAvailableWords = [];
         window.currentIndex = 0;
         window.score = 0;
 
@@ -175,11 +175,11 @@
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div onclick="selectLanguage('polština')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <span class="text-7xl mb-4">🇵🇱</span>
+                            <img src="img/polsko.png" alt="Polština" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇵🇱</span>'">
                             <h3 class="text-2xl font-black text-gray-700">Polština</h3>
                         </div>
                         <div onclick="selectLanguage('němčina')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <span class="text-7xl mb-4">🇩🇪</span>
+                            <img src="img/nemecko.png" alt="Němečina" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇩🇪</span>'">
                             <h3 class="text-2xl font-black text-gray-700">Němečina</h3>
                         </div>
                     </div>
@@ -227,7 +227,8 @@
                         <h2 class="text-3xl font-black mb-2 text-gray-700">${category}</h2>
                         <p class="text-gray-400 mb-8">Vyber si režim učení:</p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <button onclick="startLearning('poslech')" class="py-3 duo-btn-blue text-md">🎧 Poslouchání</button>
+                            <button onclick="startLearning('uceni')" class="py-3 duo-btn-blue text-md sm:col-span-2">📖 Učení Slov / Vět (Kartičky)</button>
+                            <button onclick="startLearning('poslech')" class="py-3 duo-btn-blue text-md">🎧 Poslouchání (Kvíz)</button>
                             <button onclick="startLearning('psani')" class="py-3 duo-btn-green text-md">⌨️ Psaní (Klávesnice)</button>
                             <button onclick="startLearning('cteni')" class="py-3 duo-btn-green text-md">🗣️ Čtení do hlasovky</button>
                             <button onclick="startLearning('vety')" class="py-3 duo-btn-blue text-md">📜 Věty</button>
@@ -247,7 +248,6 @@
             const lang = window.currentLang;
             const cat = window.currentCategory;
 
-            // Získat všechna slova pro výběr špatných odpovědí v poslechu
             const allSnap = await get(ref(db, `jazyky/${lang}/kategorie`));
             const allCatsData = allSnap.val() || {};
             let globalWords = [];
@@ -267,6 +267,14 @@
                 const snap = await get(ref(db, `jazyky/${lang}/texty`));
                 const data = snap.val() || {};
                 items = Object.values(data);
+            } else if(mode === 'uceni') {
+                if(cat === 'Všeobecné') {
+                    items = globalWords;
+                } else {
+                    const snap = await get(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
+                    const data = snap.val() || {};
+                    items = Object.values(data);
+                }
             } else {
                 if(cat === 'Všeobecné') {
                     items = globalWords;
@@ -298,23 +306,30 @@
 
             let contentHtml = '';
 
-            if(mode === 'poslech') {
-                // Vygenerovat 3 možnosti (1 správná, 2 náhodné špatné)
+            if(mode === 'uceni') {
+                // Režim kartiček pro učení slov/vět
+                const textToShow = currentItem.slovo || currentItem.veta || currentItem.cizi;
+                const translationToShow = currentItem.preklad || currentItem.cj;
+
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-2 text-gray-500">Prohlížeč slovíček</h3>
+                    <div class="p-8 bg-sky-50 rounded-2xl border-2 border-sky-200 mb-6">
+                        <p class="text-4xl font-black text-sky-600 mb-4">${textToShow}</p>
+                        <p class="text-2xl font-bold text-gray-700 mb-6">${translationToShow}</p>
+                        <button onclick="speakWord('${textToShow}')" class="bg-white text-sky-500 font-bold px-6 py-3 rounded-xl shadow border-2 border-sky-200 hover:bg-sky-100">🔊 Poslechnout</button>
+                    </div>
+                    <button onclick="window.currentIndex++; renderExercise();" class="w-full py-3 duo-btn-green text-lg">Další &rarr;</button>
+                `;
+            } else if(mode === 'poslech') {
                 let options = [currentItem.preklad];
-                
-                // Vybrat špatné možnosti ze všech slov
                 let otherWords = window.allAvailableWords.filter(w => w.preklad !== currentItem.preklad);
-                // Promíchat a vzít max 2
                 otherWords.sort(() => Math.random() - 0.5);
                 for(let i = 0; i < Math.min(2, otherWords.length); i++) {
                     options.push(otherWords[i].preklad);
                 }
-                // Pokud nemáme dost slov v databázi pro 3 možnosti, doplníme náhradní
                 while(options.length < 3) {
                     options.push("Jiná možnost " + (options.length + 1));
                 }
-
-                // Zamíchat pořadí tlačítek
                 options.sort(() => Math.random() - 0.5);
 
                 contentHtml = `
@@ -371,7 +386,7 @@
             document.getElementById('app').innerHTML = `
                 <div class="duo-card bg-white p-8 max-w-lg w-full text-center shadow-lg relative">
                     <button onclick="openCategory('${window.currentCategory}')" class="absolute top-4 left-4 text-gray-400 font-bold hover:text-gray-600">✕</button>
-                    <div class="mb-4 text-sm font-bold text-gray-400">Úloha ${window.currentIndex + 1} / ${items.length}</div>
+                    <div class="mb-4 text-sm font-bold text-gray-400">Položka ${window.currentIndex + 1} / ${items.length}</div>
                     ${contentHtml}
                 </div>
             `;
@@ -458,7 +473,7 @@
             `;
         }
 
-        // --- TAJNÝ ADMIN PANEL ---
+        // --- TAJNÝ ADMIN PANEL S PŘEHLEDEM SLOV A MAZÁNÍM ---
         window.openAdminLogin = function() {
             const pin = prompt("Zadejte admin heslo:");
             if(pin === "6852") {
@@ -469,37 +484,81 @@
             }
         }
 
-        window.renderAdminPanel = function() {
+        window.renderAdminPanel = async function() {
+            // Načtení aktuálního jazyka pro administraci (výchozí polština)
+            const lang = window.adminSelectedLang || 'polština';
+            const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
+            const categories = snapshot.val() || {};
+
+            let catOptions = '';
+            let selectedCat = window.adminSelectedCat || Object.keys(categories)[0] || 'Pozdravy';
+            
+            for(let c in categories) {
+                catOptions += `<option value="${c}" ${c === selectedCat ? 'selected' : ''}>${c}</option>`;
+            }
+
+            // Načtení slov pro zvolenou kategorii
+            let wordsListHtml = '';
+            if(categories[selectedCat] && categories[selectedCat].slova) {
+                const slovaObj = categories[selectedCat].slova;
+                for(let wordId in slovaObj) {
+                    const item = slovaObj[wordId];
+                    wordsListHtml += `
+                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200">
+                            <div>
+                                <span class="font-bold text-sky-600">${item.slovo}</span> 
+                                <span class="text-gray-400 mx-2">&rarr;</span> 
+                                <span class="font-semibold text-gray-700">${item.preklad}</span>
+                            </div>
+                            <button onclick="adminDeleteWord('${selectedCat}', '${wordId}')" class="bg-red-100 text-red-500 px-3 py-1 rounded-lg font-bold hover:bg-red-200 text-sm">Smazat</button>
+                        </div>
+                    `;
+                }
+            } else {
+                wordsListHtml = `<p class="text-gray-400 text-sm italic">V této kategorii zatím nejsou žádná slova.</p>`;
+            }
+
             document.getElementById('app').innerHTML = `
                 <div class="duo-card bg-white p-8 max-w-2xl w-full shadow-lg">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-2xl font-black text-red-500">🛡️ Admin Panel</h2>
                         <button onclick="loadDashboard()" class="text-gray-400 font-bold hover:text-gray-600">Zpět do appky</button>
                     </div>
+                    
                     <div class="space-y-6">
-                        <div class="p-4 border-2 border-gray-100 rounded-xl">
-                            <h3 class="font-bold text-lg mb-2">Přidat slovo (Automaticky do kategorie, Všeobecných, Vět i Přepisu textu)</h3>
-                            <select id="adminLang" class="w-full p-2 border rounded mb-2 font-semibold">
-                                <option value="polština">Polština</option>
-                                <option value="němčina">Němečina</option>
-                            </select>
-                            <input type="text" id="adminCatName" placeholder="Název kategorie (např. Jídlo)" class="w-full p-2 border rounded mb-2 font-semibold">
-                            <input type="text" id="adminWord" placeholder="Slovo v cizím jazyce" class="w-full p-2 border rounded mb-2 font-semibold">
-                            <input type="text" id="adminTranslation" placeholder="Český překlad" class="w-full p-2 border rounded mb-2 font-semibold">
-                            <button onclick="adminAddWordFullyAutomatic()" class="w-full py-2 duo-btn-green mb-2">Přidat a vše automaticky vygenerovat</button>
-                            <button onclick="adminDeleteCategory()" class="w-full py-2 duo-btn-red">Vymazat kategorii</button>
+                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
+                            <h3 class="font-bold text-lg text-gray-700">1. Výběr sekce</h3>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-400 mb-1">Jazyk</label>
+                                <select id="adminLangSelect" onchange="window.adminSelectedLang = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
+                                    <option value="polština" ${lang === 'polština' ? 'selected' : ''}>Polština</option>
+                                    <option value="němčina" ${lang === 'němčina' ? 'selected' : ''}>Němečina</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-400 mb-1">Kategorie (nebo napište novou níže)</label>
+                                <select id="adminCatSelect" onchange="window.adminSelectedCat = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
+                                    ${catOptions}
+                                </select>
+                            </div>
+                            <input type="text" id="adminNewCatInput" placeholder="Nebo vytvořit/přepsat novou kategorii..." class="w-full p-2 border rounded-xl font-semibold text-sm">
                         </div>
 
-                        <div class="p-4 border-2 border-gray-100 rounded-xl">
-                            <h3 class="font-bold text-lg mb-2">Ruční přidání Věty / Přepisu textu</h3>
-                            <select id="adminLang2" class="w-full p-2 border rounded mb-2 font-semibold">
-                                <option value="polština">Polština</option>
-                                <option value="němčina">Němečina</option>
-                            </select>
-                            <input type="text" id="adminSentence" placeholder="Věta / ČJ text" class="w-full p-2 border rounded mb-2 font-semibold">
-                            <input type="text" id="adminSentenceTrans" placeholder="Překlad / Cizí text" class="w-full p-2 border rounded mb-2 font-semibold">
-                            <button onclick="adminAddSentence()" class="w-full py-2 duo-btn-blue mb-2">Uložit větu</button>
-                            <button onclick="adminAddTextTranslation()" class="w-full py-2 duo-btn-green">Uložit přepis textu (ČJ -> cizí)</button>
+                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
+                            <h3 class="font-bold text-lg text-gray-700">2. Přidat nové slovo</h3>
+                            <input type="text" id="adminWord" placeholder="Slovo v cizím jazyce" class="w-full p-2 border rounded-xl font-semibold">
+                            <input type="text" id="adminTranslation" placeholder="Český překlad" class="w-full p-2 border rounded-xl font-semibold">
+                            <button onclick="adminAddWordFullyAutomatic()" class="w-full py-3 duo-btn-green">Přidat slovo (vše se vygeneruje)</button>
+                        </div>
+
+                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
+                            <div class="flex justify-between items-center">
+                                <h3 class="font-bold text-lg text-gray-700">3. Již vytvořená slova v (${selectedCat})</h3>
+                                <button onclick="adminDeleteCategory('${selectedCat}')" class="text-xs text-red-500 font-bold hover:underline">Smazat celou kategorii</button>
+                            </div>
+                            <div class="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                ${wordsListHtml}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -507,62 +566,56 @@
         }
 
         window.adminAddWordFullyAutomatic = async function() {
-            const lang = document.getElementById('adminLang').value;
-            const cat = document.getElementById('adminCatName').value.trim();
+            const lang = document.getElementById('adminLangSelect').value;
+            let cat = document.getElementById('adminNewCatInput').value.trim();
+            if(!cat) {
+                cat = document.getElementById('adminCatSelect').value;
+            }
+            window.adminSelectedCat = cat;
+
             const word = document.getElementById('adminWord').value.trim();
             const trans = document.getElementById('adminTranslation').value.trim();
 
             if(!cat || !word || !trans) {
-                alert("Vyplňte všechna pole!");
+                alert("Vyplňte kategorii, slovo i překlad!");
                 return;
             }
 
+            // 1. Přidat do kategorie
             const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
             await set(newWordRef, { slovo: word, preklad: trans });
 
+            // 2. Přidat do Všeobecné
             const generalRef = push(ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`));
             await set(generalRef, { slovo: word, preklad: trans });
 
+            // 3. Automatická věta
             const autoSentenceRef = push(ref(db, `jazyky/${lang}/vety`));
             await set(autoSentenceRef, { veta: `To je: ${word}`, preklad: `Toto je: ${trans}` });
 
+            // 4. Automatický přepis textu
             const autoTextRef = push(ref(db, `jazyky/${lang}/texty`));
             await set(autoTextRef, { cj: trans, cizi: word });
 
-            alert("Slovo bylo úspěšně přidáno do kategorie, Všeobecné, a automaticky vytvořilo větu i přepis textu!");
+            alert("Slovo úspěšně přidáno!");
+            renderAdminPanel();
         }
 
-        window.adminDeleteCategory = async function() {
-            const lang = document.getElementById('adminLang').value;
-            const cat = document.getElementById('adminCatName').value.trim();
-            if(!cat) { alert("Zadejte název kategorie ke smazání."); return; }
-
-            if(confirm(`Opravdu smazat kategorii ${cat}?`)) {
-                await remove(ref(db, `jazyky/${lang}/kategorie/${cat}`));
-                alert("Kategorie smazána.");
+        window.adminDeleteWord = async function(category, wordId) {
+            const lang = document.getElementById('adminLangSelect').value;
+            if(confirm("Opravdu smazat toto slovo?")) {
+                await remove(ref(db, `jazyky/${lang}/kategorie/${category}/slova/${wordId}`));
+                renderAdminPanel();
             }
         }
 
-        window.adminAddSentence = async function() {
-            const lang = document.getElementById('adminLang2').value;
-            const veta = document.getElementById('adminSentence').value.trim();
-            const preklad = document.getElementById('adminSentenceTrans').value.trim();
-
-            if(!veta || !preklad) return alert("Vyplňte větu a překlad.");
-            const newRef = push(ref(db, `jazyky/${lang}/vety`));
-            await set(newRef, { veta, preklad });
-            alert("Věta uložena do databáze!");
-        }
-
-        window.adminAddTextTranslation = async function() {
-            const lang = document.getElementById('adminLang2').value;
-            const cj = document.getElementById('adminSentence').value.trim();
-            const cizi = document.getElementById('adminSentenceTrans').value.trim();
-
-            if(!cj || !cizi) return alert("Vyplňte ČJ text a cizí přepis.");
-            const newRef = push(ref(db, `jazyky/${lang}/texty`));
-            await set(newRef, { cj, cizi });
-            alert("Přepis textu uložen do databáze!");
+        window.adminDeleteCategory = async function(category) {
+            const lang = document.getElementById('adminLangSelect').value;
+            if(confirm(`Opravdu smazat celou kategorii "${category}"?`)) {
+                await remove(ref(db, `jazyky/${lang}/kategorie/${category}`));
+                window.adminSelectedCat = '';
+                renderAdminPanel();
+            }
         }
     </script>
 </body>
