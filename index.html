@@ -175,11 +175,18 @@
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div onclick="selectLanguage('polština')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <img src="polsko.png" alt="Polština" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇵🇱</span>'">
+                            <svg class="w-20 h-20 mb-4 shadow rounded-lg overflow-hidden border border-gray-200" viewBox="0 0 16 10">
+                                <rect width="16" height="5" fill="white"/>
+                                <rect y="5" width="16" height="5" fill="#dc143c"/>
+                            </svg>
                             <h3 class="text-2xl font-black text-gray-700">Polština</h3>
                         </div>
                         <div onclick="selectLanguage('němčina')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <img src="nemecko.png" alt="Němečina" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇩🇪</span>'">
+                            <svg class="w-20 h-20 mb-4 shadow rounded-lg overflow-hidden border border-gray-200" viewBox="0 0 5 3">
+                                <rect width="5" height="1" fill="#000000"/>
+                                <rect y="1" width="5" height="1" fill="#dd0000"/>
+                                <rect y="2" width="5" height="1" fill="#ffcc00"/>
+                            </svg>
                             <h3 class="text-2xl font-black text-gray-700">Němečina</h3>
                         </div>
                     </div>
@@ -573,8 +580,9 @@
             const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
             await set(newWordRef, { slovo: word, preklad: trans });
 
-            const generalRef = push(ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`));
-            await set(generalRef, { slovo: word, preklad: trans });
+            const generalRef = ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`);
+            const generalWordRef = push(generalRef);
+            await set(generalWordRef, { slovo: word, preklad: trans });
 
             const autoSentenceRef = push(ref(db, `jazyky/${lang}/vety`));
             await set(autoSentenceRef, { veta: `To je: ${word}`, preklad: `Toto je: ${trans}` });
@@ -595,7 +603,7 @@
         }
 
         window.adminDeleteCategory = async function(category) {
-            const lang = document.getElementById('adminLangSelect'].value;
+            const lang = document.getElementById('adminLangSelect').value;
             if(confirm(`Opravdu smazat celou kategorii "${category}"?`)) {
                 await remove(ref(db, `jazyky/${lang}/kategorie/${category}`));
                 window.adminSelectedCat = '';
