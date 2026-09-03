@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jazyková Akademie s Dominikem</title>
-    <!-- Google Fonts & Tailwind CSS pro Duolingo styl -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -55,23 +54,18 @@
 </head>
 <body class="min-h-screen flex flex-col justify-between">
 
-    <!-- Horní lišta / Tajný Admin Vstup 'A' -->
     <header class="w-full p-4 flex justify-between items-center max-w-4xl mx-auto">
         <h1 class="text-2xl font-black text-green-500 tracking-wider">LINGO<span class="text-sky-400">DOM</span></h1>
         <button id="secretAdminBtn" onclick="openAdminLogin()" class="text-gray-300 hover:text-gray-600 font-bold text-xl px-2 transition" title="Admin">A</button>
     </header>
 
-    <!-- Hlavní kontejner -->
     <main id="app" class="flex-grow flex items-center justify-center p-4">
-        <!-- Zde se dynamicky mění obrazovky -->
-    </main>
+        </main>
 
-    <!-- Patička -->
     <footer class="text-center p-4 text-gray-400 text-sm">
         Učení Jazyků s Dominikem &copy; 2026
     </footer>
 
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -91,7 +85,6 @@
         const auth = getAuth(app);
         const db = getDatabase(app);
 
-        // Globální stav aplikace
         window.db = db;
         window.auth = auth;
         window.currentUser = null;
@@ -102,7 +95,6 @@
         window.currentIndex = 0;
         window.score = 0;
 
-        // Sledování stavu přihlášení (zůstane přihlášený)
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 window.currentUser = user;
@@ -158,7 +150,6 @@
                 return;
             }
 
-            // Ošetření uživatelského jména do formátu e-mailu pro Firebase Auth
             const cleanUsername = usernameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
             const fakeEmail = `${cleanUsername}@ucenijazyku.app`;
 
@@ -317,7 +308,6 @@
                     <p class="text-3xl font-black text-sky-500 mb-6">${currentItem.slovo}</p>
                     <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl font-bold mb-4 outline-none focus:border-sky-400" placeholder="Sem napište překlad...">
                     
-                    <!-- Vlastní klávesnice pro specifické znaky -->
                     <div class="flex justify-center gap-2 mb-6 flex-wrap">
                         <button onclick="typeChar('ą')" class="px-3 py-2 duo-card font-bold bg-gray-50">ą</button>
                         <button onclick="typeChar('ę')" class="px-3 py-2 duo-card font-bold bg-gray-50">ę</button>
@@ -463,7 +453,7 @@
                     </div>
                     <div class="space-y-6">
                         <div class="p-4 border-2 border-gray-100 rounded-xl">
-                            <h3 class="font-bold text-lg mb-2">Správa slov a kategorií</h3>
+                            <h3 class="font-bold text-lg mb-2">Přidat slovo (Automaticky do kategorie, Všeobecných, Vět i Přepisu textu)</h3>
                             <select id="adminLang" class="w-full p-2 border rounded mb-2 font-semibold">
                                 <option value="polština">Polština</option>
                                 <option value="němčina">Němečina</option>
@@ -471,12 +461,12 @@
                             <input type="text" id="adminCatName" placeholder="Název kategorie (např. Jídlo)" class="w-full p-2 border rounded mb-2 font-semibold">
                             <input type="text" id="adminWord" placeholder="Slovo v cizím jazyce" class="w-full p-2 border rounded mb-2 font-semibold">
                             <input type="text" id="adminTranslation" placeholder="Český překlad" class="w-full p-2 border rounded mb-2 font-semibold">
-                            <button onclick="adminAddWord()" class="w-full py-2 duo-btn-green mb-2">Přidat slovo do kategorie (a Všeobecné)</button>
+                            <button onclick="adminAddWordFullyAutomatic()" class="w-full py-2 duo-btn-green mb-2">Přidat a vše automaticky vygenerovat</button>
                             <button onclick="adminDeleteCategory()" class="w-full py-2 duo-btn-red">Vymazat kategorii</button>
                         </div>
 
                         <div class="p-4 border-2 border-gray-100 rounded-xl">
-                            <h3 class="font-bold text-lg mb-2">Přidat Větu / Přepis textu</h3>
+                            <h3 class="font-bold text-lg mb-2">Ruční přidání Věty / Přepisu textu</h3>
                             <select id="adminLang2" class="w-full p-2 border rounded mb-2 font-semibold">
                                 <option value="polština">Polština</option>
                                 <option value="němčina">Němečina</option>
@@ -491,7 +481,8 @@
             `;
         }
 
-        window.adminAddWord = async function() {
+        // TATO FUNKCE ZAJISTÍ AUTOMATICKÉ PROPSÁNÍ VŠUDE
+        window.adminAddWordFullyAutomatic = async function() {
             const lang = document.getElementById('adminLang').value;
             const cat = document.getElementById('adminCatName').value.trim();
             const word = document.getElementById('adminWord').value.trim();
@@ -502,13 +493,23 @@
                 return;
             }
 
+            // 1. Přidat do vybrané kategorie
             const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
             await set(newWordRef, { slovo: word, preklad: trans });
 
+            // 2. Automaticky kopírovat do sekce "Všeobecné"
             const generalRef = push(ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`));
             await set(generalRef, { slovo: word, preklad: trans });
 
-            alert("Slovo bylo úspěšně přidáno do kategorie i do Všeobecné!");
+            // 3. Automaticky vytvořit větu (např. "Toto je [slovo]")
+            const autoSentenceRef = push(ref(db, `jazyky/${lang}/vety`));
+            await set(autoSentenceRef, { veta: `To je: ${word}`, preklad: `Toto je: ${trans}` });
+
+            // 4. Automaticky vytvořit přepis textu (ČJ -> cizí jazyk)
+            const autoTextRef = push(ref(db, `jazyky/${lang}/texty`));
+            await set(autoTextRef, { cj: trans, cizi: word });
+
+            alert("Slovo bylo úspěšně přidáno do kategorie, Všeobecné, a automaticky vytvořilo větu i přepis textu!");
         }
 
         window.adminDeleteCategory = async function() {
