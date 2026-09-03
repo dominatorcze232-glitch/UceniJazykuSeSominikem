@@ -105,6 +105,17 @@
             }
         });
 
+        // --- ODHLÁŠENÍ ---
+        window.handleSignOut = async function() {
+            try {
+                await signOut(auth);
+                window.currentUser = null;
+                renderWelcomeScreen();
+            } catch (error) {
+                alert("Chyba při odhlašování: " + error.message);
+            }
+        }
+
         // --- OBRAZOVKY ---
         window.renderWelcomeScreen = function() {
             document.getElementById('app').innerHTML = `
@@ -171,7 +182,7 @@
                 <div class="max-w-3xl w-full text-center">
                     <div class="flex justify-between items-center mb-6 px-4">
                         <h2 class="text-2xl font-black text-gray-700">Vyber si jazyk</h2>
-                        <button onclick="signOut(auth); renderWelcomeScreen();" class="text-red-400 font-bold text-sm hover:underline">Odhlásit</button>
+                        <button onclick="handleSignOut()" class="text-red-400 font-bold text-sm hover:underline cursor-pointer">Odhlásit</button>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div onclick="selectLanguage('polština')" class="duo-card bg-white p-6 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
