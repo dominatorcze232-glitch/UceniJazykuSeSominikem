@@ -175,11 +175,11 @@
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div onclick="selectLanguage('polština')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <img src="img/polsko.png" alt="Polština" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇵🇱</span>'">
+                            <img src="polsko.png" alt="Polština" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇵🇱</span>'">
                             <h3 class="text-2xl font-black text-gray-700">Polština</h3>
                         </div>
                         <div onclick="selectLanguage('němčina')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <img src="img/nemecko.png" alt="Němečina" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇩🇪</span>'">
+                            <img src="nemecko.png" alt="Němečina" class="w-20 h-20 mb-4 object-contain" onerror="this.outerHTML='<span class=\'text-7xl mb-4\'>🇩🇪</span>'">
                             <h3 class="text-2xl font-black text-gray-700">Němečina</h3>
                         </div>
                     </div>
@@ -267,14 +267,6 @@
                 const snap = await get(ref(db, `jazyky/${lang}/texty`));
                 const data = snap.val() || {};
                 items = Object.values(data);
-            } else if(mode === 'uceni') {
-                if(cat === 'Všeobecné') {
-                    items = globalWords;
-                } else {
-                    const snap = await get(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
-                    const data = snap.val() || {};
-                    items = Object.values(data);
-                }
             } else {
                 if(cat === 'Všeobecné') {
                     items = globalWords;
@@ -307,7 +299,6 @@
             let contentHtml = '';
 
             if(mode === 'uceni') {
-                // Režim kartiček pro učení slov/vět
                 const textToShow = currentItem.slovo || currentItem.veta || currentItem.cizi;
                 const translationToShow = currentItem.preklad || currentItem.cj;
 
@@ -473,7 +464,7 @@
             `;
         }
 
-        // --- TAJNÝ ADMIN PANEL S PŘEHLEDEM SLOV A MAZÁNÍM ---
+        // --- TAJNÝ ADMIN PANEL ---
         window.openAdminLogin = function() {
             const pin = prompt("Zadejte admin heslo:");
             if(pin === "6852") {
@@ -485,7 +476,6 @@
         }
 
         window.renderAdminPanel = async function() {
-            // Načtení aktuálního jazyka pro administraci (výchozí polština)
             const lang = window.adminSelectedLang || 'polština';
             const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
             const categories = snapshot.val() || {};
@@ -497,7 +487,6 @@
                 catOptions += `<option value="${c}" ${c === selectedCat ? 'selected' : ''}>${c}</option>`;
             }
 
-            // Načtení slov pro zvolenou kategorii
             let wordsListHtml = '';
             if(categories[selectedCat] && categories[selectedCat].slova) {
                 const slovaObj = categories[selectedCat].slova;
@@ -536,7 +525,7 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-gray-400 mb-1">Kategorie (nebo napište novou níže)</label>
+                                <label class="block text-xs font-bold text-gray-400 mb-1">Kategorie</label>
                                 <select id="adminCatSelect" onchange="window.adminSelectedCat = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
                                     ${catOptions}
                                 </select>
@@ -581,19 +570,15 @@
                 return;
             }
 
-            // 1. Přidat do kategorie
             const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
             await set(newWordRef, { slovo: word, preklad: trans });
 
-            // 2. Přidat do Všeobecné
             const generalRef = push(ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`));
             await set(generalRef, { slovo: word, preklad: trans });
 
-            // 3. Automatická věta
             const autoSentenceRef = push(ref(db, `jazyky/${lang}/vety`));
             await set(autoSentenceRef, { veta: `To je: ${word}`, preklad: `Toto je: ${trans}` });
 
-            // 4. Automatický přepis textu
             const autoTextRef = push(ref(db, `jazyky/${lang}/texty`));
             await set(autoTextRef, { cj: trans, cizi: word });
 
@@ -610,7 +595,7 @@
         }
 
         window.adminDeleteCategory = async function(category) {
-            const lang = document.getElementById('adminLangSelect').value;
+            const lang = document.getElementById('adminLangSelect'].value;
             if(confirm(`Opravdu smazat celou kategorii "${category}"?`)) {
                 await remove(ref(db, `jazyky/${lang}/kategorie/${category}`));
                 window.adminSelectedCat = '';
