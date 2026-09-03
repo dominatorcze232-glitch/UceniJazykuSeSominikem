@@ -92,6 +92,7 @@
         window.currentCategory = '';
         window.currentMode = 'poslech'; 
         window.learningItems = [];
+        window.allAvailableWords = []; // Seznam pro generování špatných možností
         window.currentIndex = 0;
         window.score = 0;
 
@@ -246,6 +247,17 @@
             const lang = window.currentLang;
             const cat = window.currentCategory;
 
+            // Získat všechna slova pro výběr špatných odpovědí v poslechu
+            const allSnap = await get(ref(db, `jazyky/${lang}/kategorie`));
+            const allCatsData = allSnap.val() || {};
+            let globalWords = [];
+            for(let c in allCatsData) {
+                if(allCatsData[c].slova) {
+                    globalWords = globalWords.concat(Object.values(allCatsData[c].slova));
+                }
+            }
+            window.allAvailableWords = globalWords;
+
             let items = [];
             if(mode === 'vety') {
                 const snap = await get(ref(db, `jazyky/${lang}/vety`));
@@ -257,13 +269,7 @@
                 items = Object.values(data);
             } else {
                 if(cat === 'Všeobecné') {
-                    const snap = await get(ref(db, `jazyky/${lang}/kategorie`));
-                    const allCats = snap.val() || {};
-                    for(let c in allCats) {
-                        if(allCats[c].slova) {
-                            items = items.concat(Object.values(allCats[c].slova));
-                        }
-                    }
+                    items = globalWords;
                 } else {
                     const snap = await get(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
                     const data = snap.val() || {};
@@ -293,13 +299,32 @@
             let contentHtml = '';
 
             if(mode === 'poslech') {
+                // Vygenerovat 3 možnosti (1 správná, 2 náhodné špatné)
+                let options = [currentItem.preklad];
+                
+                // Vybrat špatné možnosti ze všech slov
+                let otherWords = window.allAvailableWords.filter(w => w.preklad !== currentItem.preklad);
+                // Promíchat a vzít max 2
+                otherWords.sort(() => Math.random() - 0.5);
+                for(let i = 0; i < Math.min(2, otherWords.length); i++) {
+                    options.push(otherWords[i].preklad);
+                }
+                // Pokud nemáme dost slov v databázi pro 3 možnosti, doplníme náhradní
+                while(options.length < 3) {
+                    options.push("Jiná možnost " + (options.length + 1));
+                }
+
+                // Zamíchat pořadí tlačítek
+                options.sort(() => Math.random() - 0.5);
+
                 contentHtml = `
                     <h3 class="text-xl font-bold mb-4 text-gray-600">Poslouchej a vyber překlad</h3>
                     <button onclick="speakWord('${currentItem.slovo}')" class="mb-6 bg-sky-100 text-sky-500 font-black p-6 rounded-full text-3xl shadow">🔊 Přehrát slovo</button>
                     <p class="text-lg font-bold mb-4">Co znamená toto slovo?</p>
-                    <div class="grid grid-cols-2 gap-4">
-                        <button onclick="checkAnswer('${currentItem.preklad}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${currentItem.preklad}</button>
-                        <button onclick="checkAnswer('špatně', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">Něco jiného</button>
+                    <div class="grid grid-cols-1 gap-3">
+                        <button onclick="checkAnswer('${options[0]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${options[0]}</button>
+                        <button onclick="checkAnswer('${options[1]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${options[1]}</button>
+                        <button onclick="checkAnswer('${options[2]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${options[2]}</button>
                     </div>
                 `;
             } else if(mode === 'psani') {
@@ -481,7 +506,6 @@
             `;
         }
 
-        // TATO FUNKCE ZAJISTÍ AUTOMATICKÉ PROPSÁNÍ VŠUDE
         window.adminAddWordFullyAutomatic = async function() {
             const lang = document.getElementById('adminLang').value;
             const cat = document.getElementById('adminCatName').value.trim();
@@ -493,19 +517,15 @@
                 return;
             }
 
-            // 1. Přidat do vybrané kategorie
             const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
             await set(newWordRef, { slovo: word, preklad: trans });
 
-            // 2. Automaticky kopírovat do sekce "Všeobecné"
             const generalRef = push(ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`));
             await set(generalRef, { slovo: word, preklad: trans });
 
-            // 3. Automaticky vytvořit větu (např. "Toto je [slovo]")
             const autoSentenceRef = push(ref(db, `jazyky/${lang}/vety`));
             await set(autoSentenceRef, { veta: `To je: ${word}`, preklad: `Toto je: ${trans}` });
 
-            // 4. Automaticky vytvořit přepis textu (ČJ -> cizí jazyk)
             const autoTextRef = push(ref(db, `jazyky/${lang}/texty`));
             await set(autoTextRef, { cj: trans, cizi: word });
 
