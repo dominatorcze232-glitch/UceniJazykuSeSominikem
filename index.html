@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jazyková Akademie s Dominikem</title>
+    <!-- Google Fonts & Tailwind CSS pro Duolingo styl -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #f7f9fa;
+            color: #3c3c3c;
+            user-select: none;
+        }
+        .duo-card {
+            border: 2px solid #e5e5e5;
+            border-bottom-width: 4px;
+            border-radius: 1rem;
+            transition: all 0.1s ease;
+        }
+        .duo-btn-green {
+            background-color: #58cc02;
+            border-bottom: 4px solid #46a302;
+            color: white;
+            font-weight: 800;
+            border-radius: 1rem;
+            transition: all 0.1s ease;
+        }
+        .duo-btn-green:active {
+            border-bottom-width: 2px;
+            transform: translateY(2px);
+        }
+        .duo-btn-blue {
+            background-color: #1cb0f6;
+            border-bottom: 4px solid #1899d6;
+            color: white;
+            font-weight: 800;
+            border-radius: 1rem;
+            transition: all 0.1s ease;
+        }
+        .duo-btn-blue:active {
+            border-bottom-width: 2px;
+            transform: translateY(2px);
+        }
+        .duo-btn-red {
+            background-color: #ff4b4b;
+            border-bottom: 4px solid #ea2b2b;
+            color: white;
+            font-weight: 800;
+            border-radius: 1rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- Horní lišta / Tajný Admin Vstup 'A' -->
+    <header class="w-full p-4 flex justify-between items-center max-w-4xl mx-auto">
+        <h1 class="text-2xl font-black text-green-500 tracking-wider">LINGO<span class="text-sky-400">DOM</span></h1>
+        <button id="secretAdminBtn" onclick="openAdminLogin()" class="text-gray-300 hover:text-gray-600 font-bold text-xl px-2 transition" title="Admin">A</button>
+    </header>
+
+    <!-- Hlavní kontejner -->
+    <main id="app" class="flex-grow flex items-center justify-center p-4">
+        <!-- Zde se dynamicky mění obrazovky -->
+    </main>
+
+    <!-- Patička -->
+    <footer class="text-center p-4 text-gray-400 text-sm">
+        Učení Jazyků s Dominikem &copy; 2026
+    </footer>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getDatabase, ref, set, get, update, remove, push, child } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDXavKf54t-SFA0K-j-tcMtg65qUSB041o",
+            authDomain: "ucenijazykusesominikem.firebaseapp.com",
+            databaseURL: "https://ucenijazykusesominikem-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "ucenijazykusesominikem",
+            storageBucket: "ucenijazykusesominikem.firebasestorage.app",
+            messagingSenderId: "396497955498",
+            appId: "1:396497955498:web:2654dd38dd9c34184c3ed3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        // Globální stav aplikace
+        window.db = db;
+        window.auth = auth;
+        window.currentUser = null;
+        window.currentLang = '';
+        window.currentCategory = '';
+        window.currentMode = 'poslech'; 
+        window.learningItems = [];
+        window.currentIndex = 0;
+        window.score = 0;
+
+        // Sledování stavu přihlášení (zůstane přihlášený)
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                window.currentUser = user;
+                loadDashboard();
+            } else {
+                if(!window.isAdminMode) renderWelcomeScreen();
+            }
+        });
+
+        // --- OBRAZOVKY ---
+        window.renderWelcomeScreen = function() {
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-md w-full text-center shadow-lg">
+                    <h2 class="text-3xl font-black mb-2 text-gray-700">Uč se jazyky zábavně!</h2>
+                    <p class="text-gray-400 mb-8">Polština a Německo na jednom místě.</p>
+                    <div class="space-y-4">
+                        <button onclick="renderAuthForm('new')" class="w-full py-3 duo-btn-green text-lg">Nový Účet</button>
+                        <button onclick="renderAuthForm('existing')" class="w-full py-3 duo-btn-blue text-lg">Již mám Účet</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.renderAuthForm = function(type) {
+            const title = type === 'new' ? 'Vytvořit účet' : 'Přihlásit se';
+            const actionText = type === 'new' ? 'Zaregistrovat' : 'Vstoupit';
+            
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-md w-full shadow-lg">
+                    <h2 class="text-2xl font-black mb-6 text-center text-gray-700">${title}</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1">Uživatelské jméno</label>
+                            <input type="text" id="authUsername" class="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-sky-400 outline-none font-semibold" placeholder="např. Dominik">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1">Heslo</label>
+                            <input type="password" id="authPassword" class="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-sky-400 outline-none font-semibold" placeholder="••••••••">
+                        </div>
+                        <button onclick="handleAuth('${type}')" class="w-full py-3 duo-btn-green text-lg mt-4">${actionText}</button>
+                        <button onclick="renderWelcomeScreen()" class="w-full py-2 text-gray-400 font-bold hover:text-gray-600">Zpět</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.handleAuth = async function(type) {
+            const usernameInput = document.getElementById('authUsername').value.trim();
+            const pass = document.getElementById('authPassword').value;
+
+            if(!usernameInput || !pass) {
+                alert("Vyplňte uživatelské jméno i heslo.");
+                return;
+            }
+
+            // Ošetření uživatelského jména do formátu e-mailu pro Firebase Auth
+            const cleanUsername = usernameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const fakeEmail = `${cleanUsername}@ucenijazyku.app`;
+
+            try {
+                if(type === 'new') {
+                    await createUserWithEmailAndPassword(auth, fakeEmail, pass);
+                } else {
+                    await signInWithEmailAndPassword(auth, fakeEmail, pass);
+                }
+            } catch(error) {
+                alert("Chyba při přihlášení/registraci: " + error.message);
+            }
+        }
+
+        window.loadDashboard = function() {
+            window.isAdminMode = false;
+            document.getElementById('app').innerHTML = `
+                <div class="max-w-3xl w-full text-center">
+                    <div class="flex justify-between items-center mb-6 px-4">
+                        <h2 class="text-2xl font-black text-gray-700">Vyber si jazyk</h2>
+                        <button onclick="signOut(auth); renderWelcomeScreen();" class="text-red-400 font-bold text-sm hover:underline">Odhlásit</button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div onclick="selectLanguage('polština')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
+                            <span class="text-7xl mb-4">🇵🇱</span>
+                            <h3 class="text-2xl font-black text-gray-700">Polština</h3>
+                        </div>
+                        <div onclick="selectLanguage('němčina')" class="duo-card bg-white p-8 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
+                            <span class="text-7xl mb-4">🇩🇪</span>
+                            <h3 class="text-2xl font-black text-gray-700">Němečina</h3>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- VÝBĚR KATEGORIÍ ---
+        window.selectLanguage = async function(lang) {
+            window.currentLang = lang;
+            const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
+            let categories = snapshot.val() || { "Pozdravy": {}, "Všeobecné": {} };
+            
+            if(!categories["Pozdravy"]) categories["Pozdravy"] = {};
+            if(!categories["Všeobecné"]) categories["Všeobecné"] = {};
+
+            let catHtml = '';
+            for(let cat in categories) {
+                catHtml += `
+                    <div onclick="openCategory('${cat}')" class="duo-card bg-white p-4 cursor-pointer hover:bg-sky-50 font-black text-lg text-gray-700 flex justify-between items-center">
+                        <span>📂 ${cat}</span>
+                        <span class="text-sky-400">&rarr;</span>
+                    </div>
+                `;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="max-w-xl w-full">
+                    <button onclick="loadDashboard()" class="text-gray-400 font-bold mb-4 hover:text-gray-600">&larr; Zpět na jazyky</button>
+                    <h2 class="text-3xl font-black mb-6 text-gray-700 capitalize">Jazyk: ${lang}</h2>
+                    <div class="space-y-4">
+                        ${catHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.openCategory = async function(category) {
+            window.currentCategory = category;
+            
+            document.getElementById('app').innerHTML = `
+                <div class="max-w-xl w-full text-center">
+                    <button onclick="selectLanguage('${window.currentLang}')" class="text-gray-400 font-bold mb-4 hover:text-gray-600 block text-left">&larr; Zpět na kategorie</button>
+                    <div class="duo-card bg-white p-8 shadow-md">
+                        <h2 class="text-3xl font-black mb-2 text-gray-700">${category}</h2>
+                        <p class="text-gray-400 mb-8">Vyber si režim učení:</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <button onclick="startLearning('poslech')" class="py-3 duo-btn-blue text-md">🎧 Poslouchání</button>
+                            <button onclick="startLearning('psani')" class="py-3 duo-btn-green text-md">⌨️ Psaní (Klávesnice)</button>
+                            <button onclick="startLearning('cteni')" class="py-3 duo-btn-green text-md">🗣️ Čtení do hlasovky</button>
+                            <button onclick="startLearning('vety')" class="py-3 duo-btn-blue text-md">📜 Věty</button>
+                            <button onclick="startLearning('preklad_textu')" class="py-3 duo-btn-green text-md sm:col-span-2">✍️ Přepis ČJ textu</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- UČENÍ A REŽIMY ---
+        window.startLearning = async function(mode) {
+            window.currentMode = mode;
+            window.currentIndex = 0;
+            window.score = 0;
+
+            const lang = window.currentLang;
+            const cat = window.currentCategory;
+
+            let items = [];
+            if(mode === 'vety') {
+                const snap = await get(ref(db, `jazyky/${lang}/vety`));
+                const data = snap.val() || {};
+                items = Object.values(data);
+            } else if(mode === 'preklad_textu') {
+                const snap = await get(ref(db, `jazyky/${lang}/texty`));
+                const data = snap.val() || {};
+                items = Object.values(data);
+            } else {
+                if(cat === 'Všeobecné') {
+                    const snap = await get(ref(db, `jazyky/${lang}/kategorie`));
+                    const allCats = snap.val() || {};
+                    for(let c in allCats) {
+                        if(allCats[c].slova) {
+                            items = items.concat(Object.values(allCats[c].slova));
+                        }
+                    }
+                } else {
+                    const snap = await get(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
+                    const data = snap.val() || {};
+                    items = Object.values(data);
+                }
+            }
+
+            window.learningItems = items;
+            if(items.length === 0) {
+                alert("V této kategorii zatím nejsou žádná data!");
+                return;
+            }
+
+            renderExercise();
+        }
+
+        window.renderExercise = function() {
+            const items = window.learningItems;
+            if(window.currentIndex >= items.length) {
+                renderFinished();
+                return;
+            }
+
+            const currentItem = items[window.currentIndex];
+            const mode = window.currentMode;
+
+            let contentHtml = '';
+
+            if(mode === 'poslech') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Poslouchej a vyber překlad</h3>
+                    <button onclick="speakWord('${currentItem.slovo}')" class="mb-6 bg-sky-100 text-sky-500 font-black p-6 rounded-full text-3xl shadow">🔊 Přehrát slovo</button>
+                    <p class="text-lg font-bold mb-4">Co znamená toto slovo?</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <button onclick="checkAnswer('${currentItem.preklad}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">${currentItem.preklad}</button>
+                        <button onclick="checkAnswer('špatně', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50">Něco jiného</button>
+                    </div>
+                `;
+            } else if(mode === 'psani') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Napiš překlad slova</h3>
+                    <p class="text-3xl font-black text-sky-500 mb-6">${currentItem.slovo}</p>
+                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl font-bold mb-4 outline-none focus:border-sky-400" placeholder="Sem napište překlad...">
+                    
+                    <!-- Vlastní klávesnice pro specifické znaky -->
+                    <div class="flex justify-center gap-2 mb-6 flex-wrap">
+                        <button onclick="typeChar('ą')" class="px-3 py-2 duo-card font-bold bg-gray-50">ą</button>
+                        <button onclick="typeChar('ę')" class="px-3 py-2 duo-card font-bold bg-gray-50">ę</button>
+                        <button onclick="typeChar('ś')" class="px-3 py-2 duo-card font-bold bg-gray-50">ś</button>
+                        <button onclick="typeChar('ä')" class="px-3 py-2 duo-card font-bold bg-gray-50">ä</button>
+                        <button onclick="typeChar('ö')" class="px-3 py-2 duo-card font-bold bg-gray-50">ö</button>
+                        <button onclick="typeChar('ü')" class="px-3 py-2 duo-card font-bold bg-gray-50">ü</button>
+                        <button onclick="typeChar('ß')" class="px-3 py-2 duo-card font-bold bg-gray-50">ß</button>
+                    </div>
+
+                    <button onclick="checkTypedAnswer('${currentItem.preklad}')" class="w-full py-3 duo-btn-green">Ověřit</button>
+                `;
+            } else if(mode === 'cteni') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přečti nahlas slovo</h3>
+                    <p class="text-4xl font-black text-green-600 mb-6">${currentItem.slovo}</p>
+                    <p class="text-gray-400 mb-6">(Klikněte na mikrofon a vyslovte slovo)</p>
+                    <button onclick="startVoiceRecognition('${currentItem.slovo}')" id="micBtn" class="p-6 bg-red-500 text-white rounded-full text-3xl shadow-lg hover:bg-red-600">🎙️</button>
+                `;
+            } else if(mode === 'vety') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přelož tuto větu</h3>
+                    <p class="text-2xl font-black text-gray-700 mb-6">${currentItem.veta}</p>
+                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-lg font-bold mb-4 outline-none focus:border-sky-400" placeholder="Napište překlad věty...">
+                    <button onclick="checkTypedAnswer('${currentItem.preklad}')" class="w-full py-3 duo-btn-green">Pokračovat</button>
+                `;
+            } else if(mode === 'preklad_textu') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přepiš český text do cizího jazyka</h3>
+                    <p class="text-xl font-bold text-gray-700 mb-6">ČJ: "${currentItem.cj}"</p>
+                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-lg font-bold mb-4 outline-none focus:border-sky-400" placeholder="Napište v cizím jazyce...">
+                    <button onclick="checkTypedAnswer('${currentItem.cizi}')" class="w-full py-3 duo-btn-green">Zkontrolovat</button>
+                `;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-lg w-full text-center shadow-lg relative">
+                    <button onclick="openCategory('${window.currentCategory}')" class="absolute top-4 left-4 text-gray-400 font-bold hover:text-gray-600">✕</button>
+                    <div class="mb-4 text-sm font-bold text-gray-400">Úloha ${window.currentIndex + 1} / ${items.length}</div>
+                    ${contentHtml}
+                </div>
+            `;
+        }
+
+        window.speakWord = function(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = window.currentLang === 'polština' ? 'pl-PL' : 'de-DE';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        window.typeChar = function(char) {
+            const input = document.getElementById('userAnswerInput');
+            if(input) {
+                input.value += char;
+                input.focus();
+            }
+        }
+
+        window.checkAnswer = function(selected, correct) {
+            if(selected === correct) {
+                window.score++;
+                alert("Správně! 🎉");
+            } else {
+                alert(`Chyba. Správně bylo: ${correct}`);
+            }
+            window.currentIndex++;
+            renderExercise();
+        }
+
+        window.checkTypedAnswer = function(correct) {
+            const val = document.getElementById('userAnswerInput').value.trim();
+            if(val.toLowerCase() === correct.toLowerCase()) {
+                window.score++;
+                alert("Výborně! 🌟");
+            } else {
+                alert(`Nesprávně. Správná odpověď: ${correct}`);
+            }
+            window.currentIndex++;
+            renderExercise();
+        }
+
+        window.startVoiceRecognition = function(correctWord) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if(!SpeechRecognition) {
+                alert("Váš prohlížeč nepodporuje rozpoznávání hlasu.");
+                window.currentIndex++;
+                renderExercise();
+                return;
+            }
+            const recognition = new SpeechRecognition();
+            recognition.lang = window.currentLang === 'polština' ? 'pl-PL' : 'de-DE';
+            
+            const btn = document.getElementById('micBtn');
+            btn.classList.add('animate-pulse', 'bg-green-500');
+
+            recognition.onresult = (event) => {
+                const spokenText = event.results[0][0].transcript.toLowerCase();
+                if(spokenText.includes(correctWord.toLowerCase())) {
+                    alert(`Skvělá výslovnost! (Rozpoznáno: ${spokenText})`);
+                    window.score++;
+                } else {
+                    alert(`Zkuste to příště lépe. Řekli jste: "${spokenText}", správně: "${correctWord}"`);
+                }
+                window.currentIndex++;
+                renderExercise();
+            };
+
+            recognition.onerror = () => {
+                alert("Hlas nebyl rozeznán, zkuste to znovu.");
+                btn.classList.remove('animate-pulse', 'bg-green-500');
+            };
+
+            recognition.start();
+        }
+
+        window.renderFinished = function() {
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-md w-full text-center shadow-lg">
+                    <h2 class="text-3xl font-black mb-4 text-gray-700">Lekce dokončena! 🏆</h2>
+                    <p class="text-xl font-bold mb-8 text-gray-500">Skóre: ${window.score} / ${window.learningItems.length}</p>
+                    <button onclick="openCategory('${window.currentCategory}')" class="w-full py-3 duo-btn-green text-lg">Pokračovat</button>
+                </div>
+            `;
+        }
+
+        // --- TAJNÝ ADMIN PANEL ---
+        window.openAdminLogin = function() {
+            const pin = prompt("Zadejte admin heslo:");
+            if(pin === "6852") {
+                window.isAdminMode = true;
+                renderAdminPanel();
+            } else if(pin !== null) {
+                alert("Nesprávné heslo!");
+            }
+        }
+
+        window.renderAdminPanel = function() {
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-2xl w-full shadow-lg">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-black text-red-500">🛡️ Admin Panel</h2>
+                        <button onclick="loadDashboard()" class="text-gray-400 font-bold hover:text-gray-600">Zpět do appky</button>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="p-4 border-2 border-gray-100 rounded-xl">
+                            <h3 class="font-bold text-lg mb-2">Správa slov a kategorií</h3>
+                            <select id="adminLang" class="w-full p-2 border rounded mb-2 font-semibold">
+                                <option value="polština">Polština</option>
+                                <option value="němčina">Němečina</option>
+                            </select>
+                            <input type="text" id="adminCatName" placeholder="Název kategorie (např. Jídlo)" class="w-full p-2 border rounded mb-2 font-semibold">
+                            <input type="text" id="adminWord" placeholder="Slovo v cizím jazyce" class="w-full p-2 border rounded mb-2 font-semibold">
+                            <input type="text" id="adminTranslation" placeholder="Český překlad" class="w-full p-2 border rounded mb-2 font-semibold">
+                            <button onclick="adminAddWord()" class="w-full py-2 duo-btn-green mb-2">Přidat slovo do kategorie (a Všeobecné)</button>
+                            <button onclick="adminDeleteCategory()" class="w-full py-2 duo-btn-red">Vymazat kategorii</button>
+                        </div>
+
+                        <div class="p-4 border-2 border-gray-100 rounded-xl">
+                            <h3 class="font-bold text-lg mb-2">Přidat Větu / Přepis textu</h3>
+                            <select id="adminLang2" class="w-full p-2 border rounded mb-2 font-semibold">
+                                <option value="polština">Polština</option>
+                                <option value="němčina">Němečina</option>
+                            </select>
+                            <input type="text" id="adminSentence" placeholder="Věta / ČJ text" class="w-full p-2 border rounded mb-2 font-semibold">
+                            <input type="text" id="adminSentenceTrans" placeholder="Překlad / Cizí text" class="w-full p-2 border rounded mb-2 font-semibold">
+                            <button onclick="adminAddSentence()" class="w-full py-2 duo-btn-blue mb-2">Uložit větu</button>
+                            <button onclick="adminAddTextTranslation()" class="w-full py-2 duo-btn-green">Uložit přepis textu (ČJ -> cizí)</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.adminAddWord = async function() {
+            const lang = document.getElementById('adminLang').value;
+            const cat = document.getElementById('adminCatName').value.trim();
+            const word = document.getElementById('adminWord').value.trim();
+            const trans = document.getElementById('adminTranslation').value.trim();
+
+            if(!cat || !word || !trans) {
+                alert("Vyplňte všechna pole!");
+                return;
+            }
+
+            const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
+            await set(newWordRef, { slovo: word, preklad: trans });
+
+            const generalRef = push(ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`));
+            await set(generalRef, { slovo: word, preklad: trans });
+
+            alert("Slovo bylo úspěšně přidáno do kategorie i do Všeobecné!");
+        }
+
+        window.adminDeleteCategory = async function() {
+            const lang = document.getElementById('adminLang').value;
+            const cat = document.getElementById('adminCatName').value.trim();
+            if(!cat) { alert("Zadejte název kategorie ke smazání."); return; }
+
+            if(confirm(`Opravdu smazat kategorii ${cat}?`)) {
+                await remove(ref(db, `jazyky/${lang}/kategorie/${cat}`));
+                alert("Kategorie smazána.");
+            }
+        }
+
+        window.adminAddSentence = async function() {
+            const lang = document.getElementById('adminLang2').value;
+            const veta = document.getElementById('adminSentence').value.trim();
+            const preklad = document.getElementById('adminSentenceTrans').value.trim();
+
+            if(!veta || !preklad) return alert("Vyplňte větu a překlad.");
+            const newRef = push(ref(db, `jazyky/${lang}/vety`));
+            await set(newRef, { veta, preklad });
+            alert("Věta uložena do databáze!");
+        }
+
+        window.adminAddTextTranslation = async function() {
+            const lang = document.getElementById('adminLang2').value;
+            const cj = document.getElementById('adminSentence').value.trim();
+            const cizi = document.getElementById('adminSentenceTrans').value.trim();
+
+            if(!cj || !cizi) return alert("Vyplňte ČJ text a cizí přepis.");
+            const newRef = push(ref(db, `jazyky/${lang}/texty`));
+            await set(newRef, { cj, cizi });
+            alert("Přepis textu uložen do databáze!");
+        }
+    </script>
+</body>
+</html>
