@@ -99,6 +99,7 @@
         window.currentIndex = 0;
         window.score = 0;
         window.langStartTime = null;
+        window.isAdminMode = false;
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -125,7 +126,7 @@
             document.getElementById('app').innerHTML = `
                 <div class="duo-card bg-white p-8 max-w-md w-full text-center shadow-lg">
                     <h2 class="text-3xl font-black mb-2 text-gray-700">Uč se jazyky zábavně!</h2>
-                    <p class="text-gray-400 mb-8">Polština a Němečina na jednom místě.</p>
+                    <p class="text-gray-400 mb-8">Polština, Němečina a Japonština na jednom místě.</p>
                     <div class="space-y-4">
                         <button onclick="renderAuthForm('new')" class="w-full py-3 duo-btn-green text-lg">Nový Účet</button>
                         <button onclick="renderAuthForm('existing')" class="w-full py-3 duo-btn-blue text-lg">Již mám Účet</button>
@@ -181,80 +182,82 @@
         }
 
         window.loadDashboard = async function() {
-            window.isAdminMode = false;
-            
             // Načtení stavů jazyků z databáze
             const snap = await get(ref(db, `jazyky`));
             const jazykyData = snap.val() || {};
 
             const polstinaStav = jazykyData['polština']?.stav || 'aktivni';
             const nemcinaStav = jazykyData['němčina']?.stav || 'aktivni';
+            const japonstinaStav = jazykyData['japonština']?.stav || 'aktivni';
+
+            const languages = [
+                { id: 'polština', name: 'Polština', stav: polstinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 16 10" preserveAspectRatio="none"><rect width="16" height="5" fill="white"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>` },
+                { id: 'němčina', name: 'Němečina', stav: nemcinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 5 3" preserveAspectRatio="none"><rect width="5" height="1" fill="#000000"/><rect y="1" width="5" height="1" fill="#dd0000"/><rect y="2" width="5" height="1" fill="#ffcc00"/></svg>` },
+                { id: 'japonština', name: 'Japonština', stav: japonstinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 900 600" preserveAspectRatio="none"><rect width="900" height="600" fill="#ffffff"/><circle cx="450" cy="300" r="180" fill="#bc002d"/></svg>` }
+            ];
 
             let languagesHtml = '';
 
-            // Polština (pokud není zamknutá)
-            if (polstinaStav !== 'zamknuto') {
-                if (polstinaStav === 'zastaveno') {
-                    languagesHtml += `
-                        <div class="duo-card bg-gray-100 p-6 flex flex-col items-center shadow-md relative opacity-75">
-                            <span class="absolute top-3 right-3 text-2xl" title="Jazyk je zastavený">🔒</span>
-                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col grayscale">
-                                <svg class="w-full h-full" viewBox="0 0 16 10" preserveAspectRatio="none">
-                                    <rect width="16" height="5" fill="white"/>
-                                    <rect y="5" width="16" height="5" fill="#dc143c"/>
-                                </svg>
-                            </div>
-                            <h3 class="text-2xl font-black text-gray-500 mb-1">Polština</h3>
-                            <p class="text-xs font-bold text-red-500 text-center">Jazyk je zastavený. K dispozici bude již brzy.</p>
-                        </div>
-                    `;
-                } else {
-                    languagesHtml += `
-                        <div onclick="selectLanguage('polština')" class="duo-card bg-white p-6 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col">
-                                <svg class="w-full h-full" viewBox="0 0 16 10" preserveAspectRatio="none">
-                                    <rect width="16" height="5" fill="white"/>
-                                    <rect y="5" width="16" height="5" fill="#dc143c"/>
-                                </svg>
-                            </div>
-                            <h3 class="text-2xl font-black text-gray-700">Polština</h3>
-                        </div>
-                    `;
+            languages.forEach(lang => {
+                // Pokud je jazyk zamknutý a uživatel není v admin módu, nezobrazujeme ho vůbec
+                if (lang.stav === 'zamknuto' && !window.isAdminMode) {
+                    return;
                 }
-            }
 
-            // Němečina (pokud není zamknutá)
-            if (nemcinaStav !== 'zamknuto') {
-                if (nemcinaStav === 'zastaveno') {
+                let adminMenuHtml = '';
+                if (window.isAdminMode) {
+                    let lockBtnText = lang.stav === 'zamknuto' ? 'Odemknout' : 'Zamknout';
+                    let lockAction = lang.stav === 'zamknuto' ? 'aktivni' : 'zamknuto';
+                    let stopBtnText = lang.stav === 'zastaveno' ? 'Odemknout' : 'Zastavit';
+                    let stopAction = lang.stav === 'zastaveno' ? 'aktivni' : 'zastaveno';
+
+                    adminMenuHtml = `
+                        <div class="absolute top-2 right-2 z-20">
+                            <button onclick="event.stopPropagation(); toggleDashboardMenu('${lang.id}')" class="px-2 py-1 bg-white border border-gray-300 rounded-lg font-black text-gray-700 shadow hover:bg-gray-50">⋮</button>
+                            <div id="dashMenu_${lang.id}" class="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-xl py-1 text-left">
+                                <button onclick="event.stopPropagation(); setLangStatusDashboard('${lang.id}', '${lockAction}')" class="w-full px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100">${lockBtnText}</button>
+                                <button onclick="event.stopPropagation(); setLangStatusDashboard('${lang.id}', '${stopAction}')" class="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-gray-100">${stopBtnText}</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (lang.stav === 'zastaveno') {
                     languagesHtml += `
                         <div class="duo-card bg-gray-100 p-6 flex flex-col items-center shadow-md relative opacity-75">
-                            <span class="absolute top-3 right-3 text-2xl" title="Jazyk je zastavený">🔒</span>
-                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col grayscale">
-                                <svg class="w-full h-full" viewBox="0 0 5 3" preserveAspectRatio="none">
-                                    <rect width="5" height="1" fill="#000000"/>
-                                    <rect y="1" width="5" height="1" fill="#dd0000"/>
-                                    <rect y="2" width="5" height="1" fill="#ffcc00"/>
-                                </svg>
+                            ${adminMenuHtml}
+                            <span class="absolute top-3 left-3 text-xl" title="Jazyk je zastavený">🔒</span>
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col grayscale mt-4">
+                                ${lang.flagHtml}
                             </div>
-                            <h3 class="text-2xl font-black text-gray-500 mb-1">Němečina</h3>
+                            <h3 class="text-2xl font-black text-gray-500 mb-1">${lang.name}</h3>
                             <p class="text-xs font-bold text-red-500 text-center">Jazyk je zastavený. K dispozici bude již brzy.</p>
+                        </div>
+                    `;
+                } else if (lang.stav === 'zamknuto' && window.isAdminMode) {
+                    languagesHtml += `
+                        <div class="duo-card bg-red-50 p-6 flex flex-col items-center shadow-md relative border-red-200">
+                            ${adminMenuHtml}
+                            <span class="absolute top-3 left-3 text-xl font-bold text-red-500" title="Zcela zamknuto (neviditelné)">👁️‍🗨️ Zamčeno</span>
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-red-200 flex flex-col opacity-50 mt-4">
+                                ${lang.flagHtml}
+                            </div>
+                            <h3 class="text-2xl font-black text-red-400 mb-1">${lang.name}</h3>
+                            <p class="text-xs font-bold text-red-400 text-center">Admin režim: Jazyk je skrytý pro běžné uživatele.</p>
                         </div>
                     `;
                 } else {
                     languagesHtml += `
-                        <div onclick="selectLanguage('němčina')" class="duo-card bg-white p-6 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md">
-                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col">
-                                <svg class="w-full h-full" viewBox="0 0 5 3" preserveAspectRatio="none">
-                                    <rect width="5" height="1" fill="#000000"/>
-                                    <rect y="1" width="5" height="1" fill="#dd0000"/>
-                                    <rect y="2" width="5" height="1" fill="#ffcc00"/>
-                                </svg>
+                        <div onclick="selectLanguage('${lang.id}')" class="duo-card bg-white p-6 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md relative">
+                            ${adminMenuHtml}
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col mt-4 sm:mt-0">
+                                ${lang.flagHtml}
                             </div>
-                            <h3 class="text-2xl font-black text-gray-700">Němečina</h3>
+                            <h3 class="text-2xl font-black text-gray-700">${lang.name}</h3>
                         </div>
                     `;
                 }
-            }
+            });
 
             if (!languagesHtml) {
                 languagesHtml = `<p class="text-gray-400 text-center col-span-2">Všechny jazyky jsou aktuálně zamčené.</p>`;
@@ -263,14 +266,31 @@
             document.getElementById('app').innerHTML = `
                 <div class="max-w-3xl w-full text-center">
                     <div class="flex justify-between items-center mb-6 px-4">
-                        <h2 class="text-2xl font-black text-gray-700">Vyber si jazyk</h2>
+                        <div>
+                            <h2 class="text-2xl font-black text-gray-700">Vyber si jazyk</h2>
+                            ${window.isAdminMode ? '<span class="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-200">Admin Režim zapnut</span>' : ''}
+                        </div>
                         <button onclick="handleSignOut()" class="text-red-400 font-bold text-sm hover:underline cursor-pointer">Odhlásit</button>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                         ${languagesHtml}
                     </div>
                 </div>
             `;
+        }
+
+        window.toggleDashboardMenu = function(langId) {
+            // Skrýt ostatní menu
+            document.querySelectorAll('[id^="dashMenu_"]').forEach(m => {
+                if(m.id !== `dashMenu_${langId}`) m.classList.add('hidden');
+            });
+            const menu = document.getElementById(`dashMenu_${langId}`);
+            if(menu) menu.classList.toggle('hidden');
+        }
+
+        window.setLangStatusDashboard = async function(langId, status) {
+            await set(ref(db, `jazyky/${langId}/stav`), status);
+            loadDashboard();
         }
 
         // --- SLEDOVÁNÍ ČASU A STATISTIKY UŽIVATELŮ ---
@@ -490,11 +510,16 @@
             const currentItem = items[window.currentIndex];
             const mode = window.currentMode;
 
-            // Dynamický výběr speciálních písmen podle aktuálního jazyka
+            // Dynamický výběr speciálních znaků podle aktuálního jazyka
             const lang = window.currentLang;
-            const specialChars = lang === 'polština' 
-                ? ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż'] 
-                : ['ä', 'ö', 'ü', 'ß'];
+            let specialChars = [];
+            if (lang === 'polština') {
+                specialChars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż'];
+            } else if (lang === 'němčina') {
+                specialChars = ['ä', 'ö', 'ü', 'ß'];
+            } else if (lang === 'japonština') {
+                specialChars = ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ', 'は', 'ひ', 'ふ', 'へ', 'ほ', 'ん'];
+            }
             
             let charButtonsHtml = '';
             specialChars.forEach(ch => {
@@ -597,7 +622,9 @@
 
         window.speakWord = function(text) {
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = window.currentLang === 'polština' ? 'pl-PL' : 'de-DE';
+            if (window.currentLang === 'polština') utterance.lang = 'pl-PL';
+            else if (window.currentLang === 'němčina') utterance.lang = 'de-DE';
+            else if (window.currentLang === 'japonština') utterance.lang = 'ja-JP';
             window.speechSynthesis.speak(utterance);
         }
 
@@ -658,7 +685,9 @@
                 return;
             }
             const recognition = new SpeechRecognition();
-            recognition.lang = window.currentLang === 'polština' ? 'pl-PL' : 'de-DE';
+            if (window.currentLang === 'polština') recognition.lang = 'pl-PL';
+            else if (window.currentLang === 'němčina') recognition.lang = 'de-DE';
+            else if (window.currentLang === 'japonština') recognition.lang = 'ja-JP';
             
             const btn = document.getElementById('micBtn');
             btn.classList.add('animate-pulse', 'bg-green-500');
@@ -698,7 +727,7 @@
             const pin = prompt("Zadejte admin heslo:");
             if(pin === "6852") {
                 window.isAdminMode = true;
-                renderAdminPanel();
+                loadDashboard();
             } else if(pin !== null) {
                 alert("Nesprávné heslo!");
             }
@@ -708,10 +737,6 @@
             const lang = window.adminSelectedLang || 'polština';
             const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
             const categories = snapshot.val() || {};
-
-            // Načtení stavu konkrétního jazyka pro admin menu
-            const langSnap = await get(ref(db, `jazyky/${lang}/stav`));
-            const currentLangStav = langSnap.val() || 'aktivni';
 
             let catOptions = '';
             let selectedCat = window.adminSelectedCat || Object.keys(categories)[0] || 'Pozdravy';
@@ -740,13 +765,6 @@
                 wordsListHtml = `<p class="text-gray-400 text-sm italic">V této kategorii zatím nejsou žádná slova.</p>`;
             }
 
-            // Texty tlačítek pro tři tečky podle aktuálního stavu jazyka
-            let lockBtnText = currentLangStav === 'zamknuto' ? 'Odemknout jazyk' : 'Zamknout jazyk';
-            let lockAction = currentLangStav === 'zamknuto' ? 'aktivni' : 'zamknuto';
-
-            let stopBtnText = currentLangStav === 'zastaveno' ? 'Odemknout jazyk' : 'Zastavit jazyk';
-            let stopAction = currentLangStav === 'zastaveno' ? 'aktivni' : 'zastaveno';
-
             document.getElementById('app').innerHTML = `
                 <div class="duo-card bg-white p-8 max-w-2xl w-full shadow-lg">
                     <div class="flex justify-between items-center mb-6">
@@ -756,21 +774,13 @@
                     
                     <div class="space-y-6">
                         <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
-                            <div class="flex justify-between items-center">
-                                <h3 class="font-bold text-lg text-gray-700">1. Výběr sekci & Správa jazyka</h3>
-                                <div class="relative">
-                                    <button onclick="toggleAdminMenu()" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg font-black text-gray-600">⋮</button>
-                                    <div id="adminDropdownMenu" class="hidden absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1">
-                                        <button onclick="setLangStatus('${lockAction}')" class="w-full text-left px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100">${lockBtnText}</button>
-                                        <button onclick="setLangStatus('${stopAction}')" class="w-full text-left px-4 py-2 text-sm font-bold text-red-600 hover:bg-gray-100">${stopBtnText}</button>
-                                    </div>
-                                </div>
-                            </div>
+                            <h3 class="font-bold text-lg text-gray-700">1. Výběr sekce jazyka</h3>
                             <div>
                                 <label class="block text-xs font-bold text-gray-400 mb-1">Jazyk</label>
                                 <select id="adminLangSelect" onchange="window.adminSelectedLang = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
                                     <option value="polština" ${lang === 'polština' ? 'selected' : ''}>Polština</option>
                                     <option value="němčina" ${lang === 'němčina' ? 'selected' : ''}>Němečina</option>
+                                    <option value="japonština" ${lang === 'japonština' ? 'selected' : ''}>Japonština</option>
                                 </select>
                             </div>
                             <div>
@@ -801,20 +811,6 @@
                     </div>
                 </div>
             `;
-        }
-
-        window.toggleAdminMenu = function() {
-            const menu = document.getElementById('adminDropdownMenu');
-            if(menu) {
-                menu.classList.toggle('hidden');
-            }
-        }
-
-        window.setLangStatus = async function(status) {
-            const lang = window.adminSelectedLang || 'polština';
-            await set(ref(db, `jazyky/${lang}/stav`), status);
-            alert(`Stav jazyka ${lang} byl změněn.`);
-            renderAdminPanel();
         }
 
         window.adminAddWordFullyAutomatic = async function() {
