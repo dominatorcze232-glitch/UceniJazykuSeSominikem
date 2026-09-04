@@ -115,6 +115,7 @@
             try {
                 await signOut(auth);
                 window.currentUser = null;
+                window.isAdminMode = false;
                 renderWelcomeScreen();
             } catch (error) {
                 alert("Chyba při odhlašování: " + error.message);
@@ -126,7 +127,7 @@
             document.getElementById('app').innerHTML = `
                 <div class="duo-card bg-white p-8 max-w-md w-full text-center shadow-lg">
                     <h2 class="text-3xl font-black mb-2 text-gray-700">Uč se jazyky zábavně!</h2>
-                    <p class="text-gray-400 mb-8">Polština, Němečina a Japonština na jednom místě.</p>
+                    <p class="text-gray-400 mb-8">Polština, Němčina a Japonština na jednom místě.</p>
                     <div class="space-y-4">
                         <button onclick="renderAuthForm('new')" class="w-full py-3 duo-btn-green text-lg">Nový Účet</button>
                         <button onclick="renderAuthForm('existing')" class="w-full py-3 duo-btn-blue text-lg">Již mám Účet</button>
@@ -192,14 +193,14 @@
 
             const languages = [
                 { id: 'polština', name: 'Polština', stav: polstinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 16 10" preserveAspectRatio="none"><rect width="16" height="5" fill="white"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>` },
-                { id: 'němčina', name: 'Němečina', stav: nemcinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 5 3" preserveAspectRatio="none"><rect width="5" height="1" fill="#000000"/><rect y="1" width="5" height="1" fill="#dd0000"/><rect y="2" width="5" height="1" fill="#ffcc00"/></svg>` },
+                { id: 'němčina', name: 'Němčina', stav: nemcinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 5 3" preserveAspectRatio="none"><rect width="5" height="1" fill="#000000"/><rect y="1" width="5" height="1" fill="#dd0000"/><rect y="2" width="5" height="1" fill="#ffcc00"/></svg>` },
                 { id: 'japonština', name: 'Japonština', stav: japonstinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 900 600" preserveAspectRatio="none"><rect width="900" height="600" fill="#ffffff"/><circle cx="450" cy="300" r="180" fill="#bc002d"/></svg>` }
             ];
 
             let languagesHtml = '';
 
             languages.forEach(lang => {
-                // Pokud je jazyk zamknutý a uživatel není v admin módu, nezobrazujeme ho vůbec
+                // Pokud je jazyk zamknutý a uživatel NENÍ admin, zcela ho přeskočíme
                 if (lang.stav === 'zamknuto' && !window.isAdminMode) {
                     return;
                 }
@@ -212,9 +213,9 @@
                     let stopAction = lang.stav === 'zastaveno' ? 'aktivni' : 'zastaveno';
 
                     adminMenuHtml = `
-                        <div class="absolute top-2 right-2 z-20">
-                            <button onclick="event.stopPropagation(); toggleDashboardMenu('${lang.id}')" class="px-2 py-1 bg-white border border-gray-300 rounded-lg font-black text-gray-700 shadow hover:bg-gray-50">⋮</button>
-                            <div id="dashMenu_${lang.id}" class="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-xl py-1 text-left">
+                        <div class="absolute top-2 right-2 z-25">
+                            <button onclick="event.stopPropagation(); toggleDashboardMenu('${lang.id}')" class="px-2.5 py-1 bg-white border border-gray-300 rounded-lg font-black text-gray-700 shadow-md hover:bg-gray-100">⋮</button>
+                            <div id="dashMenu_${lang.id}" class="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-xl py-1 text-left z-30">
                                 <button onclick="event.stopPropagation(); setLangStatusDashboard('${lang.id}', '${lockAction}')" class="w-full px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100">${lockBtnText}</button>
                                 <button onclick="event.stopPropagation(); setLangStatusDashboard('${lang.id}', '${stopAction}')" class="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-gray-100">${stopBtnText}</button>
                             </div>
@@ -222,7 +223,8 @@
                     `;
                 }
 
-                if (lang.stav === 'zastaveno') {
+                // Pro admina se i zamknutý/zastavený jazyk normálně proklikne do kategorie, ale uživatelsky se odliší
+                if (lang.stav === 'zastaveno' && !window.isAdminMode) {
                     languagesHtml += `
                         <div class="duo-card bg-gray-100 p-6 flex flex-col items-center shadow-md relative opacity-75">
                             ${adminMenuHtml}
@@ -236,14 +238,26 @@
                     `;
                 } else if (lang.stav === 'zamknuto' && window.isAdminMode) {
                     languagesHtml += `
-                        <div class="duo-card bg-red-50 p-6 flex flex-col items-center shadow-md relative border-red-200">
+                        <div onclick="selectLanguage('${lang.id}')" class="duo-card bg-red-50 p-6 cursor-pointer hover:bg-red-100 flex flex-col items-center shadow-md relative border-red-200">
                             ${adminMenuHtml}
-                            <span class="absolute top-3 left-3 text-xl font-bold text-red-500" title="Zcela zamknuto (neviditelné)">👁️‍🗨️ Zamčeno</span>
-                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-red-200 flex flex-col opacity-50 mt-4">
+                            <span class="absolute top-3 left-3 text-xs font-bold text-red-600 bg-white px-2 py-0.5 rounded shadow" title="Zcela zamknuto">👁️‍🗨️ Zamčeno (Admin přístup)</span>
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-red-200 flex flex-col opacity-60 mt-6">
                                 ${lang.flagHtml}
                             </div>
-                            <h3 class="text-2xl font-black text-red-400 mb-1">${lang.name}</h3>
-                            <p class="text-xs font-bold text-red-400 text-center">Admin režim: Jazyk je skrytý pro běžné uživatele.</p>
+                            <h3 class="text-2xl font-black text-red-500 mb-1">${lang.name}</h3>
+                            <p class="text-xs font-bold text-red-400 text-center">Kliknutím vstoupíš jako Admin</p>
+                        </div>
+                    `;
+                } else if (lang.stav === 'zastaveno' && window.isAdminMode) {
+                    languagesHtml += `
+                        <div onclick="selectLanguage('${lang.id}')" class="duo-card bg-amber-50 p-6 cursor-pointer hover:bg-amber-100 flex flex-col items-center shadow-md relative border-amber-200">
+                            ${adminMenuHtml}
+                            <span class="absolute top-3 left-3 text-xs font-bold text-amber-700 bg-white px-2 py-0.5 rounded shadow">🔒 Zastaveno (Admin přístup)</span>
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-amber-200 flex flex-col mt-6">
+                                ${lang.flagHtml}
+                            </div>
+                            <h3 class="text-2xl font-black text-amber-700 mb-1">${lang.name}</h3>
+                            <p class="text-xs font-bold text-amber-600 text-center">Jazyk zastaven pro lidi, ty ho spravuješ.</p>
                         </div>
                     `;
                 } else {
@@ -268,7 +282,7 @@
                     <div class="flex justify-between items-center mb-6 px-4">
                         <div>
                             <h2 class="text-2xl font-black text-gray-700">Vyber si jazyk</h2>
-                            ${window.isAdminMode ? '<span class="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-200">Admin Režim zapnut</span>' : ''}
+                            ${window.isAdminMode ? '<span class="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-200">Admin Režim aktivní (můžeš otevřít i zamknuté)</span>' : ''}
                         </div>
                         <button onclick="handleSignOut()" class="text-red-400 font-bold text-sm hover:underline cursor-pointer">Odhlásit</button>
                     </div>
@@ -280,7 +294,6 @@
         }
 
         window.toggleDashboardMenu = function(langId) {
-            // Skrýt ostatní menu
             document.querySelectorAll('[id^="dashMenu_"]').forEach(m => {
                 if(m.id !== `dashMenu_${langId}`) m.classList.add('hidden');
             });
@@ -372,7 +385,11 @@
                         <span class="text-sky-500 font-black text-xl">&rarr;</span>
                     </div>
 
-                    <h2 class="text-3xl font-black mb-6 text-gray-700 capitalize">Jazyk: ${lang}</h2>
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-3xl font-black text-gray-700 capitalize">Jazyk: ${lang}</h2>
+                        ${window.isAdminMode ? `<button onclick="window.adminSelectedLang='${lang}'; renderAdminPanel();" class="px-3 py-2 bg-red-500 text-white rounded-xl font-bold text-sm shadow">🛡️ Upravit v Adminu</button>` : ''}
+                    </div>
+
                     <div class="space-y-4">
                         ${catHtml}
                     </div>
@@ -510,7 +527,6 @@
             const currentItem = items[window.currentIndex];
             const mode = window.currentMode;
 
-            // Dynamický výběr speciálních znaků podle aktuálního jazyka
             const lang = window.currentLang;
             let specialChars = [];
             if (lang === 'polština') {
@@ -779,7 +795,7 @@
                                 <label class="block text-xs font-bold text-gray-400 mb-1">Jazyk</label>
                                 <select id="adminLangSelect" onchange="window.adminSelectedLang = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
                                     <option value="polština" ${lang === 'polština' ? 'selected' : ''}>Polština</option>
-                                    <option value="němčina" ${lang === 'němčina' ? 'selected' : ''}>Němečina</option>
+                                    <option value="němčina" ${lang === 'němčina' ? 'selected' : ''}>Němčina</option>
                                     <option value="japonština" ${lang === 'japonština' ? 'selected' : ''}>Japonština</option>
                                 </select>
                             </div>
