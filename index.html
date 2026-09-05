@@ -1,1 +1,883 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jazyková Akademie s Dominikem</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #f7f9fa;
+            color: #3c3c3c;
+            user-select: none;
+        }
+        .duo-card {
+            border: 2px solid #e5e5e5;
+            border-bottom-width: 4px;
+            border-radius: 1rem;
+            transition: all 0.1s ease;
+        }
+        .duo-btn-green {
+            background-color: #58cc02;
+            border-bottom: 4px solid #46a302;
+            color: white;
+            font-weight: 800;
+            border-radius: 1rem;
+            transition: all 0.1s ease;
+        }
+        .duo-btn-green:active {
+            border-bottom-width: 2px;
+            transform: translateY(2px);
+        }
+        .duo-btn-blue {
+            background-color: #1cb0f6;
+            border-bottom: 4px solid #1899d6;
+            color: white;
+            font-weight: 800;
+            border-radius: 1rem;
+            transition: all 0.1s ease;
+        }
+        .duo-btn-blue:active {
+            border-bottom-width: 2px;
+            transform: translateY(2px);
+        }
+        .correct-answer {
+            background-color: #d7ffb8 !important;
+            border-color: #58cc02 !important;
+            color: #277000 !important;
+        }
+        .wrong-answer {
+            background-color: #ffdfe0 !important;
+            border-color: #ff4b4b !important;
+            color: #ea2b2b !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
 
+    <header class="w-full p-4 flex justify-between items-center max-w-4xl mx-auto">
+        <h1 class="text-2xl font-black text-green-500 tracking-wider">LINGO<span class="text-sky-400">DOM</span></h1>
+        <button id="secretAdminBtn" onclick="openAdminLogin()" class="text-gray-300 hover:text-gray-600 font-bold text-xl px-2 transition" title="Admin">A</button>
+    </header>
+
+    <main id="app" class="flex-grow flex items-center justify-center p-4">
+        </main>
+
+    <footer class="text-center p-4 text-gray-400 text-sm">
+        Učení Jazyků s Dominikem &copy; 2026
+    </footer>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getDatabase, ref, set, get, update, remove, push, child } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDXavKf54t-SFA0K-j-tcMtg65qUSB041o",
+            authDomain: "ucenijazykusesominikem.firebaseapp.com",
+            databaseURL: "https://ucenijazykusesominikem-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "ucenijazykusesominikem",
+            storageBucket: "ucenijazykusesominikem.firebasestorage.app",
+            messagingSenderId: "396497955498",
+            appId: "1:396497955498:web:2654dd38dd9c34184c3ed3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        window.db = db;
+        window.auth = auth;
+        window.currentUser = null;
+        window.currentLang = '';
+        window.currentCategory = '';
+        window.currentMode = 'poslech'; 
+        window.learningItems = [];
+        window.allAvailableWords = [];
+        window.currentIndex = 0;
+        window.score = 0;
+        window.langStartTime = null;
+        window.isAdminMode = false;
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                window.currentUser = user;
+                loadDashboard();
+            } else {
+                if(!window.isAdminMode) renderWelcomeScreen();
+            }
+        });
+
+        // --- ODHLÁŠENÍ ---
+        window.handleSignOut = async function() {
+            try {
+                await signOut(auth);
+                window.currentUser = null;
+                window.isAdminMode = false;
+                renderWelcomeScreen();
+            } catch (error) {
+                alert("Chyba při odhlašování: " + error.message);
+            }
+        }
+
+        // --- OBRAZOVKY ---
+        window.renderWelcomeScreen = function() {
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-md w-full text-center shadow-lg">
+                    <h2 class="text-3xl font-black mb-2 text-gray-700">Uč se jazyky zábavně!</h2>
+                    <p class="text-gray-400 mb-8">Polština, Němčina a Japonština na jednom místě.</p>
+                    <div class="space-y-4">
+                        <button onclick="renderAuthForm('new')" class="w-full py-3 duo-btn-green text-lg">Nový Účet</button>
+                        <button onclick="renderAuthForm('existing')" class="w-full py-3 duo-btn-blue text-lg">Již mám Účet</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.renderAuthForm = function(type) {
+            const title = type === 'new' ? 'Vytvořit účet' : 'Přihlásit se';
+            const actionText = type === 'new' ? 'Zaregistrovat' : 'Vstoupit';
+            
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-md w-full shadow-lg">
+                    <h2 class="text-2xl font-black mb-6 text-center text-gray-700">${title}</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1">Uživatelské jméno</label>
+                            <input type="text" id="authUsername" class="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-sky-400 outline-none font-semibold" placeholder="např. Dominik">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-500 mb-1">Heslo</label>
+                            <input type="password" id="authPassword" class="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-sky-400 outline-none font-semibold" placeholder="••••••••">
+                        </div>
+                        <button onclick="handleAuth('${type}')" class="w-full py-3 duo-btn-green text-lg mt-4">${actionText}</button>
+                        <button onclick="renderWelcomeScreen()" class="w-full py-2 text-gray-400 font-bold hover:text-gray-600">Zpět</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.handleAuth = async function(type) {
+            const usernameInput = document.getElementById('authUsername').value.trim();
+            const pass = document.getElementById('authPassword').value;
+
+            if(!usernameInput || !pass) {
+                alert("Vyplňte uživatelské jméno i heslo.");
+                return;
+            }
+
+            const cleanUsername = usernameInput.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const fakeEmail = `${cleanUsername}@ucenijazyku.app`;
+
+            try {
+                if(type === 'new') {
+                    await createUserWithEmailAndPassword(auth, fakeEmail, pass);
+                } else {
+                    await signInWithEmailAndPassword(auth, fakeEmail, pass);
+                }
+            } catch(error) {
+                alert("Chyba při přihlášení/registraci: " + error.message);
+            }
+        }
+
+        window.loadDashboard = async function() {
+            // Načtení stavů jazyků z databáze
+            const snap = await get(ref(db, `jazyky`));
+            const jazykyData = snap.val() || {};
+
+            const polstinaStav = jazykyData['polština']?.stav || 'aktivni';
+            const nemcinaStav = jazykyData['němčina']?.stav || 'aktivni';
+            const japonstinaStav = jazykyData['japonština']?.stav || 'aktivni';
+
+            const languages = [
+                { id: 'polština', name: 'Polština', stav: polstinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 16 10" preserveAspectRatio="none"><rect width="16" height="5" fill="white"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>` },
+                { id: 'němčina', name: 'Němčina', stav: nemcinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 5 3" preserveAspectRatio="none"><rect width="5" height="1" fill="#000000"/><rect y="1" width="5" height="1" fill="#dd0000"/><rect y="2" width="5" height="1" fill="#ffcc00"/></svg>` },
+                { id: 'japonština', name: 'Japonština', stav: japonstinaStav, flagHtml: `<svg class="w-full h-full" viewBox="0 0 900 600" preserveAspectRatio="none"><rect width="900" height="600" fill="#ffffff"/><circle cx="450" cy="300" r="180" fill="#bc002d"/></svg>` }
+            ];
+
+            let languagesHtml = '';
+
+            languages.forEach(lang => {
+                // Pokud je jazyk zamknutý a uživatel NENÍ admin, zcela ho přeskočíme
+                if (lang.stav === 'zamknuto' && !window.isAdminMode) {
+                    return;
+                }
+
+                let adminMenuHtml = '';
+                if (window.isAdminMode) {
+                    let lockBtnText = lang.stav === 'zamknuto' ? 'Odemknout' : 'Zamknout';
+                    let lockAction = lang.stav === 'zamknuto' ? 'aktivni' : 'zamknuto';
+                    let stopBtnText = lang.stav === 'zastaveno' ? 'Odemknout' : 'Zastavit';
+                    let stopAction = lang.stav === 'zastaveno' ? 'aktivni' : 'zastaveno';
+
+                    adminMenuHtml = `
+                        <div class="absolute top-2 right-2 z-25">
+                            <button onclick="event.stopPropagation(); toggleDashboardMenu('${lang.id}')" class="px-2.5 py-1 bg-white border border-gray-300 rounded-lg font-black text-gray-700 shadow-md hover:bg-gray-100">⋮</button>
+                            <div id="dashMenu_${lang.id}" class="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-xl py-1 text-left z-30">
+                                <button onclick="event.stopPropagation(); setLangStatusDashboard('${lang.id}', '${lockAction}')" class="w-full px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100">${lockBtnText}</button>
+                                <button onclick="event.stopPropagation(); setLangStatusDashboard('${lang.id}', '${stopAction}')" class="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-gray-100">${stopBtnText}</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Pro admina se i zamknutý/zastavený jazyk normálně proklikne do kategorie, ale uživatelsky se odliší
+                if (lang.stav === 'zastaveno' && !window.isAdminMode) {
+                    languagesHtml += `
+                        <div class="duo-card bg-gray-100 p-6 flex flex-col items-center shadow-md relative opacity-75">
+                            ${adminMenuHtml}
+                            <span class="absolute top-3 left-3 text-xl" title="Jazyk je zastavený">🔒</span>
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col grayscale mt-4">
+                                ${lang.flagHtml}
+                            </div>
+                            <h3 class="text-2xl font-black text-gray-500 mb-1">${lang.name}</h3>
+                            <p class="text-xs font-bold text-red-500 text-center">Jazyk je zastavený. K dispozici bude již brzy.</p>
+                        </div>
+                    `;
+                } else if (lang.stav === 'zamknuto' && window.isAdminMode) {
+                    languagesHtml += `
+                        <div onclick="selectLanguage('${lang.id}')" class="duo-card bg-red-50 p-6 cursor-pointer hover:bg-red-100 flex flex-col items-center shadow-md relative border-red-200">
+                            ${adminMenuHtml}
+                            <span class="absolute top-3 left-3 text-xs font-bold text-red-600 bg-white px-2 py-0.5 rounded shadow" title="Zcela zamknuto">👁️‍🗨️ Zamčeno (Admin přístup)</span>
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-red-200 flex flex-col opacity-60 mt-6">
+                                ${lang.flagHtml}
+                            </div>
+                            <h3 class="text-2xl font-black text-red-500 mb-1">${lang.name}</h3>
+                            <p class="text-xs font-bold text-red-400 text-center">Kliknutím vstoupíš jako Admin</p>
+                        </div>
+                    `;
+                } else if (lang.stav === 'zastaveno' && window.isAdminMode) {
+                    languagesHtml += `
+                        <div onclick="selectLanguage('${lang.id}')" class="duo-card bg-amber-50 p-6 cursor-pointer hover:bg-amber-100 flex flex-col items-center shadow-md relative border-amber-200">
+                            ${adminMenuHtml}
+                            <span class="absolute top-3 left-3 text-xs font-bold text-amber-700 bg-white px-2 py-0.5 rounded shadow">🔒 Zastaveno (Admin přístup)</span>
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-amber-200 flex flex-col mt-6">
+                                ${lang.flagHtml}
+                            </div>
+                            <h3 class="text-2xl font-black text-amber-700 mb-1">${lang.name}</h3>
+                            <p class="text-xs font-bold text-amber-600 text-center">Jazyk zastaven pro lidi, ty ho spravuješ.</p>
+                        </div>
+                    `;
+                } else {
+                    languagesHtml += `
+                        <div onclick="selectLanguage('${lang.id}')" class="duo-card bg-white p-6 cursor-pointer hover:border-sky-400 flex flex-col items-center shadow-md relative">
+                            ${adminMenuHtml}
+                            <div class="w-32 h-20 mb-4 rounded-xl overflow-hidden shadow-inner border-2 border-gray-200 flex flex-col mt-4 sm:mt-0">
+                                ${lang.flagHtml}
+                            </div>
+                            <h3 class="text-2xl font-black text-gray-700">${lang.name}</h3>
+                        </div>
+                    `;
+                }
+            });
+
+            if (!languagesHtml) {
+                languagesHtml = `<p class="text-gray-400 text-center col-span-2">Všechny jazyky jsou aktuálně zamčené.</p>`;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="max-w-3xl w-full text-center">
+                    <div class="flex justify-between items-center mb-6 px-4">
+                        <div>
+                            <h2 class="text-2xl font-black text-gray-700">Vyber si jazyk</h2>
+                            ${window.isAdminMode ? '<span class="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-200">Admin Režim aktivní (můžeš otevřít i zamknuté)</span>' : ''}
+                        </div>
+                        <button onclick="handleSignOut()" class="text-red-400 font-bold text-sm hover:underline cursor-pointer">Odhlásit</button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                        ${languagesHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.toggleDashboardMenu = function(langId) {
+            document.querySelectorAll('[id^="dashMenu_"]').forEach(m => {
+                if(m.id !== `dashMenu_${langId}`) m.classList.add('hidden');
+            });
+            const menu = document.getElementById(`dashMenu_${langId}`);
+            if(menu) menu.classList.toggle('hidden');
+        }
+
+        window.setLangStatusDashboard = async function(langId, status) {
+            await set(ref(db, `jazyky/${langId}/stav`), status);
+            loadDashboard();
+        }
+
+        // --- SLEDOVÁNÍ ČASU A STATISTIKY UŽIVATELŮ ---
+        window.selectLanguage = async function(lang) {
+            window.currentLang = lang;
+            window.langStartTime = Date.now();
+
+            if(window.currentUser) {
+                const username = window.currentUser.email.split('@')[0];
+                const userRef = ref(db, `statistiky/${lang}/uzivatele/${username}`);
+                const snap = await get(userRef);
+                const data = snap.val();
+                
+                if(!data || !data.prvniNavstiva) {
+                    await update(userRef, {
+                        posledniAktivita: Date.now(),
+                        online: true
+                    });
+                } else {
+                    await update(userRef, {
+                        posledniAktivita: Date.now(),
+                        online: true
+                    });
+                }
+            }
+
+            if(window.activityInterval) clearInterval(window.activityInterval);
+            window.activityInterval = setInterval(async () => {
+                if(window.currentUser && window.currentLang === lang && window.langStartTime) {
+                    const elapsed = (Date.now() - window.langStartTime) / 1000;
+                    if(elapsed >= 15) {
+                        const username = window.currentUser.email.split('@')[0];
+                        const userRef = ref(db, `statistiky/${lang}/uzivatele/${username}`);
+                        const snap = await get(userRef);
+                        const data = snap.val();
+                        if(!data || !data.prvniNavstiva) {
+                            await update(userRef, {
+                                prvniNavstiva: new Date().toLocaleString('cs-CZ'),
+                                posledniAktivita: Date.now(),
+                                online: true
+                            });
+                        }
+                    }
+                }
+            }, 5000);
+
+            renderCategoryScreen(lang);
+        }
+
+        window.renderCategoryScreen = async function(lang) {
+            const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
+            let categories = snapshot.val() || { "Pozdravy": {}, "Všeobecné": {} };
+            
+            if(!categories["Pozdravy"]) categories["Pozdravy"] = {};
+            if(!categories["Všeobecné"]) categories["Všeobecné"] = {};
+
+            let catHtml = '';
+            for(let cat in categories) {
+                catHtml += `
+                    <div onclick="openCategory('${cat}')" class="duo-card bg-white p-4 cursor-pointer hover:bg-sky-50 font-black text-lg text-gray-700 flex justify-between items-center">
+                        <span>📂 ${cat}</span>
+                        <span class="text-sky-400">&rarr;</span>
+                    </div>
+                `;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="max-w-xl w-full">
+                    <button onclick="loadDashboard()" class="text-gray-400 font-bold mb-4 hover:text-gray-600">&larr; Zpět na jazyky</button>
+                    
+                    <div onclick="openLanguageStats()" class="duo-card bg-sky-50 p-4 mb-6 cursor-pointer hover:bg-sky-100 flex items-center justify-between border-sky-200">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-sky-400 rounded-full flex items-center justify-center text-2xl text-white shadow">👤</div>
+                            <div>
+                               <h3 class="font-black text-sky-700 text-lg">Statistiky učících se</h3>
+                               <p class="text-xs text-gray-500 font-bold">Klikni pro zobrazení uživatelů a aktivity</p>
+                            </div>
+                        </div>
+                        <span class="text-sky-500 font-black text-xl">&rarr;</span>
+                    </div>
+
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-3xl font-black text-gray-700 capitalize">Jazyk: ${lang}</h2>
+                        ${window.isAdminMode ? `<button onclick="window.adminSelectedLang='${lang}'; renderAdminPanel();" class="px-3 py-2 bg-red-500 text-white rounded-xl font-bold text-sm shadow">🛡️ Upravit v Adminu</button>` : ''}
+                    </div>
+
+                    <div class="space-y-4">
+                        ${catHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.openLanguageStats = async function() {
+            const lang = window.currentLang;
+            const snap = await get(ref(db, `statistiky/${lang}/uzivatele`));
+            const users = snap.val() || {};
+
+            let usersListHtml = '';
+            let activeCount = 0;
+            const now = Date.now();
+
+            for(let username in users) {
+                const uData = users[username];
+                const isOnline = uData.posledniAktivita && (now - uData.posledniAktivita < 60000);
+                const statusBadge = isOnline ? '<span class="text-green-500 font-bold text-xs bg-green-50 px-2 py-1 rounded-full border border-green-200">● Online</span>' : '<span class="text-gray-400 font-bold text-xs bg-gray-100 px-2 py-1 rounded-full border border-gray-200">○ Offline</span>';
+                
+                if(uData.prvniNavstiva) {
+                    activeCount++;
+                    usersListHtml += `
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 flex justify-between items-center">
+                            <div>
+                                <p class="font-black text-gray-700 text-md">${username}</p>
+                                <p class="text-xs text-gray-400 font-semibold">Aktivní od: ${uData.prvniNavstiva}</p>
+                            </div>
+                            <div>${statusBadge}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            if(!usersListHtml) {
+                usersListHtml = `<p class="text-gray-400 text-sm italic text-center py-4">Zatím žádný uživatel nestrávil na tomto jazyku více než 15 sekund.</p>`;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-lg w-full shadow-lg relative">
+                    <button onclick="renderCategoryScreen('${lang}')" class="absolute top-4 left-4 text-gray-400 font-bold hover:text-gray-600">✕</button>
+                    <h2 class="text-2xl font-black mb-2 text-gray-700 text-center">Statistiky: ${lang}</h2>
+                    <p class="text-center text-sky-600 font-bold mb-6">Celkem uživatelů (více než 15s): ${activeCount}</p>
+                    <div class="space-y-3 max-h-64 overflow-y-auto pr-2 mb-6">
+                        ${usersListHtml}
+                    </div>
+                    <button onclick="renderCategoryScreen('${lang}')" class="w-full py-3 duo-btn-green text-md">Zpět</button>
+                </div>
+            `;
+        }
+
+        window.openCategory = async function(category) {
+            window.currentCategory = category;
+            
+            document.getElementById('app').innerHTML = `
+                <div class="max-w-xl w-full text-center">
+                    <button onclick="renderCategoryScreen('${window.currentLang}')" class="text-gray-400 font-bold mb-4 hover:text-gray-600 block text-left">&larr; Zpět na kategorie</button>
+                    <div class="duo-card bg-white p-8 shadow-md">
+                        <h2 class="text-3xl font-black mb-2 text-gray-700">${category}</h2>
+                        <p class="text-gray-400 mb-8">Vyber si režim učení:</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <button onclick="startLearning('uceni')" class="py-3 duo-btn-blue text-md sm:col-span-2">📖 Učení Slov / Vět (Kartičky)</button>
+                            <button onclick="startLearning('poslech')" class="py-3 duo-btn-blue text-md">🎧 Poslouchání (Kvíz)</button>
+                            <button onclick="startLearning('psani')" class="py-3 duo-btn-green text-md">⌨️ Psaní (Klávesnice)</button>
+                            <button onclick="startLearning('cteni')" class="py-3 duo-btn-green text-md">🗣️ Čtení do hlasovky</button>
+                            <button onclick="startLearning('vety')" class="py-3 duo-btn-blue text-md">📜 Věty</button>
+                            <button onclick="startLearning('preklad_textu')" class="py-3 duo-btn-green text-md sm:col-span-2">✍️ Přepis ČJ textu</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- UČENÍ A REŽIMY ---
+        window.startLearning = async function(mode) {
+            window.currentMode = mode;
+            window.currentIndex = 0;
+            window.score = 0;
+
+            const lang = window.currentLang;
+            const cat = window.currentCategory;
+
+            const allSnap = await get(ref(db, `jazyky/${lang}/kategorie`));
+            const allCatsData = allSnap.val() || {};
+            let globalWords = [];
+            for(let c in allCatsData) {
+                if(allCatsData[c].slova) {
+                    globalWords = globalWords.concat(Object.values(allCatsData[c].slova));
+                }
+            }
+            window.allAvailableWords = globalWords;
+
+            let items = [];
+            if(mode === 'vety') {
+                const snap = await get(ref(db, `jazyky/${lang}/vety`));
+                const data = snap.val() || {};
+                items = Object.values(data);
+            } else if(mode === 'preklad_textu') {
+                const snap = await get(ref(db, `jazyky/${lang}/texty`));
+                const data = snap.val() || {};
+                items = Object.values(data);
+            } else {
+                if(cat === 'Všeobecné') {
+                    items = globalWords;
+                } else {
+                    const snap = await get(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
+                    const data = snap.val() || {};
+                    items = Object.values(data);
+                }
+            }
+
+            window.learningItems = items;
+            if(items.length === 0) {
+                alert("V této kategorii zatím nejsou žádná data!");
+                return;
+            }
+
+            renderExercise();
+        }
+
+        window.renderExercise = function() {
+            const items = window.learningItems;
+            
+            if(window.currentMode === 'uceni' && window.currentIndex >= items.length) {
+                openCategory(window.currentCategory);
+                return;
+            }
+
+            if(window.currentIndex >= items.length) {
+                renderFinished();
+                return;
+            }
+
+            const currentItem = items[window.currentIndex];
+            const mode = window.currentMode;
+
+            const lang = window.currentLang;
+            let specialChars = [];
+            if (lang === 'polština') {
+                specialChars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż'];
+            } else if (lang === 'němčina') {
+                specialChars = ['ä', 'ö', 'ü', 'ß'];
+            } else if (lang === 'japonština') {
+                specialChars = ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ', 'は', 'ひ', 'ふ', 'へ', 'ほ', 'ん'];
+            }
+            
+            let charButtonsHtml = '';
+            specialChars.forEach(ch => {
+                charButtonsHtml += `<button type="button" onclick="typeChar('${ch}')" class="px-3 py-2 duo-card font-bold bg-gray-50 hover:bg-sky-50 text-sky-600">${ch}</button>`;
+            });
+
+            let contentHtml = '';
+
+            if(mode === 'uceni') {
+                const textToShow = currentItem.slovo || currentItem.veta || currentItem.cizi;
+                const translationToShow = currentItem.preklad || currentItem.cj;
+
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-2 text-gray-500">Prohlížeč slovíček</h3>
+                    <div class="p-8 bg-sky-50 rounded-2xl border-2 border-sky-200 mb-6">
+                        <p class="text-4xl font-black text-sky-600 mb-4">${textToShow}</p>
+                        <p class="text-2xl font-bold text-gray-700 mb-6">${translationToShow}</p>
+                        <button onclick="speakWord('${textToShow}')" class="bg-white text-sky-500 font-bold px-6 py-3 rounded-xl shadow border-2 border-sky-200 hover:bg-sky-100">🔊 Poslechnout</button>
+                    </div>
+                    <div class="flex gap-3">
+                        ${window.currentIndex > 0 ? `<button onclick="window.currentIndex--; renderExercise();" class="w-1/3 py-3 duo-card font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">&larr; Zpět</button>` : ''}
+                        <button onclick="window.currentIndex++; renderExercise();" class="flex-grow py-3 duo-btn-green text-lg">Další &rarr;</button>
+                    </div>
+                `;
+            } else if(mode === 'poslech') {
+                let options = [currentItem.preklad];
+                let otherWords = window.allAvailableWords.filter(w => w.preklad !== currentItem.preklad);
+                otherWords.sort(() => Math.random() - 0.5);
+                for(let i = 0; i < Math.min(2, otherWords.length); i++) {
+                    options.push(otherWords[i].preklad);
+                }
+                while(options.length < 3) {
+                    options.push("Jiná možnost " + (options.length + 1));
+                }
+                options.sort(() => Math.random() - 0.5);
+
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Poslouchej a vyber překlad</h3>
+                    <button onclick="speakWord('${currentItem.slovo}')" class="mb-6 bg-sky-100 text-sky-500 font-black p-6 rounded-full text-3xl shadow">🔊 Přehrát slovo</button>
+                    <p class="text-lg font-bold mb-4">Co znamená toto slovo?</p>
+                    <div class="grid grid-cols-1 gap-3" id="quizOptionsContainer">
+                        <button onclick="checkCustomAnswer(this, '${options[0]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[0]}</button>
+                        <button onclick="checkCustomAnswer(this, '${options[1]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[1]}</button>
+                        <button onclick="checkCustomAnswer(this, '${options[2]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[2]}</button>
+                    </div>
+                `;
+            } else if(mode === 'psani') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Napiš překlad slova</h3>
+                    <p class="text-3xl font-black text-sky-500 mb-6">${currentItem.slovo}</p>
+                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl font-bold mb-3 outline-none focus:border-sky-400" placeholder="Sem napište překlad...">
+                    
+                    <div class="flex justify-center gap-2 mb-6 flex-wrap">
+                        ${charButtonsHtml}
+                    </div>
+
+                    <button onclick="checkTypedAnswer('${currentItem.preklad}')" class="w-full py-3 duo-btn-green">Ověřit</button>
+                `;
+            } else if(mode === 'cteni') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přečti nahlas slovo</h3>
+                    <p class="text-4xl font-black text-green-600 mb-6">${currentItem.slovo}</p>
+                    <p class="text-gray-400 mb-6">(Klikněte na mikrofon a vyslovte slovo)</p>
+                    <button onclick="startVoiceRecognition('${currentItem.slovo}')" id="micBtn" class="p-6 bg-red-500 text-white rounded-full text-3xl shadow-lg hover:bg-red-600">🎙️</button>
+                `;
+            } else if(mode === 'vety') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přelož tuto větu</h3>
+                    <p class="text-2xl font-black text-gray-700 mb-6">${currentItem.veta}</p>
+                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-lg font-bold mb-3 outline-none focus:border-sky-400" placeholder="Napište překlad věty...">
+                    
+                    <div class="flex justify-center gap-2 mb-6 flex-wrap">
+                        ${charButtonsHtml}
+                    </div>
+
+                    <button onclick="checkTypedAnswer('${currentItem.preklad}')" class="w-full py-3 duo-btn-green">Pokračovat</button>
+                `;
+            } else if(mode === 'preklad_textu') {
+                contentHtml = `
+                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přepiš český text do cizího jazyka</h3>
+                    <p class="text-xl font-bold text-gray-700 mb-6">ČJ: "${currentItem.cj}"</p>
+                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-lg font-bold mb-3 outline-none focus:border-sky-400" placeholder="Napište v cizím jazyce...">
+                    
+                    <div class="flex justify-center gap-2 mb-6 flex-wrap">
+                        ${charButtonsHtml}
+                    </div>
+
+                    <button onclick="checkTypedAnswer('${currentItem.cizi}')" class="w-full py-3 duo-btn-green">Zkontrolovat</button>
+                `;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-lg w-full text-center shadow-lg relative">
+                    <button onclick="openCategory('${window.currentCategory}')" class="absolute top-4 left-4 text-gray-400 font-bold hover:text-gray-600">✕</button>
+                    <div class="mb-4 text-sm font-bold text-gray-400">Položka ${window.currentIndex + 1} / ${items.length}</div>
+                    ${contentHtml}
+                </div>
+            `;
+        }
+
+        window.speakWord = function(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            if (window.currentLang === 'polština') utterance.lang = 'pl-PL';
+            else if (window.currentLang === 'němčina') utterance.lang = 'de-DE';
+            else if (window.currentLang === 'japonština') utterance.lang = 'ja-JP';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        window.typeChar = function(char) {
+            const input = document.getElementById('userAnswerInput');
+            if(input) {
+                const start = input.selectionStart;
+                const end = input.selectionEnd;
+                const val = input.value;
+                input.value = val.substring(0, start) + char + val.substring(end);
+                input.selectionStart = input.selectionEnd = start + 1;
+                input.focus();
+            }
+        }
+
+        window.checkCustomAnswer = function(btnElement, selected, correct) {
+            const container = document.getElementById('quizOptionsContainer');
+            const buttons = container.getElementsByTagName('button');
+            
+            for(let b of buttons) {
+                b.style.pointerEvents = 'none';
+                if(b.innerText.trim() === correct.trim()) {
+                    b.classList.add('correct-answer');
+                }
+            }
+
+            if(selected === correct) {
+                window.score++;
+                btnElement.classList.add('correct-answer');
+            } else {
+                btnElement.classList.add('wrong-answer');
+            }
+
+            setTimeout(() => {
+                window.currentIndex++;
+                renderExercise();
+            }, 1200);
+        }
+
+        window.checkTypedAnswer = function(correct) {
+            const val = document.getElementById('userAnswerInput').value.trim();
+            if(val.toLowerCase() === correct.toLowerCase()) {
+                window.score++;
+                alert("Výborně! 🌟");
+            } else {
+                alert(`Nesprávně. Správná odpověď: ${correct}`);
+            }
+            window.currentIndex++;
+            renderExercise();
+        }
+
+        window.startVoiceRecognition = function(correctWord) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if(!SpeechRecognition) {
+                alert("Váš prohlížeč nepodporuje rozpoznávání hlasu.");
+                window.currentIndex++;
+                renderExercise();
+                return;
+            }
+            const recognition = new SpeechRecognition();
+            if (window.currentLang === 'polština') recognition.lang = 'pl-PL';
+            else if (window.currentLang === 'němčina') recognition.lang = 'de-DE';
+            else if (window.currentLang === 'japonština') recognition.lang = 'ja-JP';
+            
+            const btn = document.getElementById('micBtn');
+            btn.classList.add('animate-pulse', 'bg-green-500');
+
+            recognition.onresult = (event) => {
+                const spokenText = event.results[0][0].transcript.toLowerCase();
+                if(spokenText.includes(correctWord.toLowerCase())) {
+                    alert(`Skvělá výslovnost! (Rozpoznáno: ${spokenText})`);
+                    window.score++;
+                } else {
+                    alert(`Zkuste to příště lépe. Řekli jste: "${spokenText}", správně: "${correctWord}"`);
+                }
+                window.currentIndex++;
+                renderExercise();
+            };
+
+            recognition.onerror = () => {
+                alert("Hlas nebyl rozeznán, zkuste to znovu.");
+                btn.classList.remove('animate-pulse', 'bg-green-500');
+            };
+
+            recognition.start();
+        }
+
+        window.renderFinished = function() {
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-md w-full text-center shadow-lg">
+                    <h2 class="text-3xl font-black mb-4 text-gray-700">Lekce dokončena! 🏆</h2>
+                    <p class="text-xl font-bold mb-8 text-gray-500">Skóre: ${window.score} / ${window.learningItems.length}</p>
+                    <button onclick="openCategory('${window.currentCategory}')" class="w-full py-3 duo-btn-green text-lg">Pokračovat</button>
+                </div>
+            `;
+        }
+
+        // --- TAJNÝ ADMIN PANEL ---
+        window.openAdminLogin = function() {
+            const pin = prompt("Zadejte admin heslo:");
+            if(pin === "6852") {
+                window.isAdminMode = true;
+                loadDashboard();
+            } else if(pin !== null) {
+                alert("Nesprávné heslo!");
+            }
+        }
+
+        window.renderAdminPanel = async function() {
+            const lang = window.adminSelectedLang || 'polština';
+            const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
+            const categories = snapshot.val() || {};
+
+            let catOptions = '';
+            let selectedCat = window.adminSelectedCat || Object.keys(categories)[0] || 'Pozdravy';
+            
+            for(let c in categories) {
+                catOptions += `<option value="${c}" ${c === selectedCat ? 'selected' : ''}>${c}</option>`;
+            }
+
+            let wordsListHtml = '';
+            if(categories[selectedCat] && categories[selectedCat].slova) {
+                const slovaObj = categories[selectedCat].slova;
+                for(let wordId in slovaObj) {
+                    const item = slovaObj[wordId];
+                    wordsListHtml += `
+                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200">
+                            <div>
+                                <span class="font-bold text-sky-600">${item.slovo}</span> 
+                                <span class="text-gray-400 mx-2">&rarr;</span> 
+                                <span class="font-semibold text-gray-700">${item.preklad}</span>
+                            </div>
+                            <button onclick="adminDeleteWord('${selectedCat}', '${wordId}')" class="bg-red-100 text-red-500 px-3 py-1 rounded-lg font-bold hover:bg-red-200 text-sm">Smazat</button>
+                        </div>
+                    `;
+                }
+            } else {
+                wordsListHtml = `<p class="text-gray-400 text-sm italic">V této kategorii zatím nejsou žádná slova.</p>`;
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="duo-card bg-white p-8 max-w-2xl w-full shadow-lg">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-black text-red-500">🛡️ Admin Panel</h2>
+                        <button onclick="loadDashboard()" class="text-gray-400 font-bold hover:text-gray-600">Zpět do appky</button>
+                    </div>
+                    
+                    <div class="space-y-6">
+                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
+                            <h3 class="font-bold text-lg text-gray-700">1. Výběr sekce jazyka</h3>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-400 mb-1">Jazyk</label>
+                                <select id="adminLangSelect" onchange="window.adminSelectedLang = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
+                                    <option value="polština" ${lang === 'polština' ? 'selected' : ''}>Polština</option>
+                                    <option value="němčina" ${lang === 'němčina' ? 'selected' : ''}>Němčina</option>
+                                    <option value="japonština" ${lang === 'japonština' ? 'selected' : ''}>Japonština</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-400 mb-1">Kategorie</label>
+                                <select id="adminCatSelect" onchange="window.adminSelectedCat = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
+                                    ${catOptions}
+                                </select>
+                            </div>
+                            <input type="text" id="adminNewCatInput" placeholder="Nebo vytvořit/přepsat novou kategorii..." class="w-full p-2 border rounded-xl font-semibold text-sm">
+                        </div>
+
+                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
+                            <h3 class="font-bold text-lg text-gray-700">2. Přidat nové slovo</h3>
+                            <input type="text" id="adminWord" placeholder="Slovo v cizím jazyce" class="w-full p-2 border rounded-xl font-semibold">
+                            <input type="text" id="adminTranslation" placeholder="Český překlad" class="w-full p-2 border rounded-xl font-semibold">
+                            <button onclick="adminAddWordFullyAutomatic()" class="w-full py-3 duo-btn-green">Přidat slovo (vše se vygeneruje)</button>
+                        </div>
+
+                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
+                            <div class="flex justify-between items-center">
+                                <h3 class="font-bold text-lg text-gray-700">3. Již vytvořená slova v (${selectedCat})</h3>
+                                <button onclick="adminDeleteCategory('${selectedCat}')" class="text-xs text-red-500 font-bold hover:underline">Smazat celou kategorii</button>
+                            </div>
+                            <div class="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                ${wordsListHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.adminAddWordFullyAutomatic = async function() {
+            const lang = document.getElementById('adminLangSelect').value;
+            let cat = document.getElementById('adminNewCatInput').value.trim();
+            if(!cat) {
+                cat = document.getElementById('adminCatSelect').value;
+            }
+            window.adminSelectedCat = cat;
+
+            const word = document.getElementById('adminWord').value.trim();
+            const trans = document.getElementById('adminTranslation').value.trim();
+
+            if(!cat || !word || !trans) {
+                alert("Vyplňte kategorii, slovo i překlad!");
+                return;
+            }
+
+            const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
+            await set(newWordRef, { slovo: word, preklad: trans });
+
+            const generalRef = ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`);
+            const generalWordRef = push(generalRef);
+            await set(generalWordRef, { slovo: word, preklad: trans });
+
+            const autoSentenceRef = push(ref(db, `jazyky/${lang}/vety`));
+            await set(autoSentenceRef, { veta: `To je: ${word}`, preklad: `Toto je: ${trans}` });
+
+            const autoTextRef = push(ref(db, `jazyky/${lang}/texty`));
+            await set(autoTextRef, { cj: trans, cizi: word });
+
+            alert("Slovo úspěšně přidáno!");
+            renderAdminPanel();
+        }
+
+        window.adminDeleteWord = async function(category, wordId) {
+            const lang = document.getElementById('adminLangSelect').value;
+            if(confirm("Opravdu smazat toto slovo?")) {
+                await remove(ref(db, `jazyky/${lang}/kategorie/${category}/slova/${wordId}`));
+                renderAdminPanel();
+            }
+        }
+
+        window.adminDeleteCategory = async function(category) {
+            const lang = document.getElementById('adminLangSelect').value;
+            if(confirm(`Opravdu smazat celou kategorii "${category}"?`)) {
+                await remove(ref(db, `jazyky/${lang}/kategorie/${category}`));
+                window.adminSelectedCat = '';
+                renderAdminPanel();
+            }
+        }
+    </script>
+</body>
+</html>
