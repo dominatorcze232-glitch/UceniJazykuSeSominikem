@@ -65,8 +65,9 @@
     <main id="app" class="flex-grow flex items-center justify-center p-4">
         </main>
 
-    <footer class="text-center p-4 text-gray-400 text-sm">
-        Učení Jazyků s Dominikem &copy; 2026
+    <footer class="w-full p-4 flex justify-between items-center text-gray-400 text-sm max-w-4xl mx-auto">
+        <div>Učení Jazyků s Dominikem &copy; 2026</div>
+        <div id="appVersionDisplay" class="font-bold text-gray-500 bg-gray-200 px-2.5 py-1 rounded-lg">Verze: 1.0</div>
     </footer>
 
     <script type="module">
@@ -100,6 +101,26 @@
         window.score = 0;
         window.langStartTime = null;
         window.isAdminMode = false;
+        window.appVersion = '1.0';
+
+        // Načtení verze z DB při startu
+        async function loadAppVersion() {
+            try {
+                const snap = await get(ref(db, 'system/verze'));
+                if (snap.exists()) {
+                    window.appVersion = snap.val();
+                } else {
+                    await set(ref(db, 'system/verze'), '1.0');
+                }
+                const versionEl = document.getElementById('appVersionDisplay');
+                if (versionEl) {
+                    versionEl.innerHTML = `Verze: ${window.appVersion}`;
+                }
+            } catch (e) {
+                console.error("Chyba při načítání verze:", e);
+            }
+        }
+        loadAppVersion();
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -109,6 +130,28 @@
                 if(!window.isAdminMode) renderWelcomeScreen();
             }
         });
+
+        // --- ADMIN PŘIHLÁŠENÍ A SPRÁVA VERZE ---
+        window.openAdminLogin = function() {
+            const pass = prompt("Zadejte admin heslo:");
+            if (pass === "6852") {
+                window.isAdminMode = true;
+                alert("Admin režim aktivován!");
+                loadDashboard();
+            } else if (pass !== null) {
+                alert("Nesprávné heslo!");
+            }
+        }
+
+        window.updateVersion = async function() {
+            const newVer = prompt("Zadejte novou verzi aplikace (např. 1.1):", window.appVersion);
+            if (newVer) {
+                await set(ref(db, 'system/verze'), newVer);
+                window.appVersion = newVer;
+                document.getElementById('appVersionDisplay').innerHTML = `Verze: ${newVer}`;
+                alert("Verze byla úspěšně změněna!");
+            }
+        }
 
         // --- ODHLÁŠENÍ ---
         window.handleSignOut = async function() {
@@ -223,7 +266,6 @@
                     `;
                 }
 
-                // Pro admina se i zamknutý/zastavený jazyk normálně proklikne do kategorie, ale uživatelsky se odliší
                 if (lang.stav === 'zastaveno' && !window.isAdminMode) {
                     languagesHtml += `
                         <div class="duo-card bg-gray-100 p-6 flex flex-col items-center shadow-md relative opacity-75">
@@ -282,7 +324,7 @@
                     <div class="flex justify-between items-center mb-6 px-4">
                         <div>
                             <h2 class="text-2xl font-black text-gray-700">Vyber si jazyk</h2>
-                            ${window.isAdminMode ? '<span class="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-200">Admin Režim aktivní (můžeš otevřít i zamknuté)</span>' : ''}
+                            ${window.isAdminMode ? '<div class="mt-2 flex items-center justify-center gap-2"><span class="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-200">Admin Režim aktivní</span><button onclick="updateVersion()" class="text-xs font-bold bg-gray-800 text-white px-2 py-0.5 rounded shadow">⚙️ Změnit verzi</button></div>' : ''}
                         </div>
                         <button onclick="handleSignOut()" class="text-red-400 font-bold text-sm hover:underline cursor-pointer">Odhlásit</button>
                     </div>
@@ -509,374 +551,6 @@
             }
 
             renderExercise();
-        }
-
-        window.renderExercise = function() {
-            const items = window.learningItems;
-            
-            if(window.currentMode === 'uceni' && window.currentIndex >= items.length) {
-                openCategory(window.currentCategory);
-                return;
-            }
-
-            if(window.currentIndex >= items.length) {
-                renderFinished();
-                return;
-            }
-
-            const currentItem = items[window.currentIndex];
-            const mode = window.currentMode;
-
-            const lang = window.currentLang;
-            let specialChars = [];
-            if (lang === 'polština') {
-                specialChars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż'];
-            } else if (lang === 'němčina') {
-                specialChars = ['ä', 'ö', 'ü', 'ß'];
-            } else if (lang === 'japonština') {
-                specialChars = ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ', 'は', 'ひ', 'ふ', 'へ', 'ほ', 'ん'];
-            }
-            
-            let charButtonsHtml = '';
-            specialChars.forEach(ch => {
-                charButtonsHtml += `<button type="button" onclick="typeChar('${ch}')" class="px-3 py-2 duo-card font-bold bg-gray-50 hover:bg-sky-50 text-sky-600">${ch}</button>`;
-            });
-
-            let contentHtml = '';
-
-            if(mode === 'uceni') {
-                const textToShow = currentItem.slovo || currentItem.veta || currentItem.cizi;
-                const translationToShow = currentItem.preklad || currentItem.cj;
-
-                contentHtml = `
-                    <h3 class="text-xl font-bold mb-2 text-gray-500">Prohlížeč slovíček</h3>
-                    <div class="p-8 bg-sky-50 rounded-2xl border-2 border-sky-200 mb-6">
-                        <p class="text-4xl font-black text-sky-600 mb-4">${textToShow}</p>
-                        <p class="text-2xl font-bold text-gray-700 mb-6">${translationToShow}</p>
-                        <button onclick="speakWord('${textToShow}')" class="bg-white text-sky-500 font-bold px-6 py-3 rounded-xl shadow border-2 border-sky-200 hover:bg-sky-100">🔊 Poslechnout</button>
-                    </div>
-                    <div class="flex gap-3">
-                        ${window.currentIndex > 0 ? `<button onclick="window.currentIndex--; renderExercise();" class="w-1/3 py-3 duo-card font-bold text-gray-600 bg-gray-50 hover:bg-gray-100">&larr; Zpět</button>` : ''}
-                        <button onclick="window.currentIndex++; renderExercise();" class="flex-grow py-3 duo-btn-green text-lg">Další &rarr;</button>
-                    </div>
-                `;
-            } else if(mode === 'poslech') {
-                let options = [currentItem.preklad];
-                let otherWords = window.allAvailableWords.filter(w => w.preklad !== currentItem.preklad);
-                otherWords.sort(() => Math.random() - 0.5);
-                for(let i = 0; i < Math.min(2, otherWords.length); i++) {
-                    options.push(otherWords[i].preklad);
-                }
-                while(options.length < 3) {
-                    options.push("Jiná možnost " + (options.length + 1));
-                }
-                options.sort(() => Math.random() - 0.5);
-
-                contentHtml = `
-                    <h3 class="text-xl font-bold mb-4 text-gray-600">Poslouchej a vyber překlad</h3>
-                    <button onclick="speakWord('${currentItem.slovo}')" class="mb-6 bg-sky-100 text-sky-500 font-black p-6 rounded-full text-3xl shadow">🔊 Přehrát slovo</button>
-                    <p class="text-lg font-bold mb-4">Co znamená toto slovo?</p>
-                    <div class="grid grid-cols-1 gap-3" id="quizOptionsContainer">
-                        <button onclick="checkCustomAnswer(this, '${options[0]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[0]}</button>
-                        <button onclick="checkCustomAnswer(this, '${options[1]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[1]}</button>
-                        <button onclick="checkCustomAnswer(this, '${options[2]}', '${currentItem.preklad}')" class="duo-card p-4 font-bold hover:bg-gray-50 text-left transition">${options[2]}</button>
-                    </div>
-                `;
-            } else if(mode === 'psani') {
-                contentHtml = `
-                    <h3 class="text-xl font-bold mb-4 text-gray-600">Napiš překlad slova</h3>
-                    <p class="text-3xl font-black text-sky-500 mb-6">${currentItem.slovo}</p>
-                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-xl font-bold mb-3 outline-none focus:border-sky-400" placeholder="Sem napište překlad...">
-                    
-                    <div class="flex justify-center gap-2 mb-6 flex-wrap">
-                        ${charButtonsHtml}
-                    </div>
-
-                    <button onclick="checkTypedAnswer('${currentItem.preklad}')" class="w-full py-3 duo-btn-green">Ověřit</button>
-                `;
-            } else if(mode === 'cteni') {
-                contentHtml = `
-                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přečti nahlas slovo</h3>
-                    <p class="text-4xl font-black text-green-600 mb-6">${currentItem.slovo}</p>
-                    <p class="text-gray-400 mb-6">(Klikněte na mikrofon a vyslovte slovo)</p>
-                    <button onclick="startVoiceRecognition('${currentItem.slovo}')" id="micBtn" class="p-6 bg-red-500 text-white rounded-full text-3xl shadow-lg hover:bg-red-600">🎙️</button>
-                `;
-            } else if(mode === 'vety') {
-                contentHtml = `
-                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přelož tuto větu</h3>
-                    <p class="text-2xl font-black text-gray-700 mb-6">${currentItem.veta}</p>
-                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-lg font-bold mb-3 outline-none focus:border-sky-400" placeholder="Napište překlad věty...">
-                    
-                    <div class="flex justify-center gap-2 mb-6 flex-wrap">
-                        ${charButtonsHtml}
-                    </div>
-
-                    <button onclick="checkTypedAnswer('${currentItem.preklad}')" class="w-full py-3 duo-btn-green">Pokračovat</button>
-                `;
-            } else if(mode === 'preklad_textu') {
-                contentHtml = `
-                    <h3 class="text-xl font-bold mb-4 text-gray-600">Přepiš český text do cizího jazyka</h3>
-                    <p class="text-xl font-bold text-gray-700 mb-6">ČJ: "${currentItem.cj}"</p>
-                    <input type="text" id="userAnswerInput" class="w-full p-4 border-2 border-gray-200 rounded-xl text-center text-lg font-bold mb-3 outline-none focus:border-sky-400" placeholder="Napište v cizím jazyce...">
-                    
-                    <div class="flex justify-center gap-2 mb-6 flex-wrap">
-                        ${charButtonsHtml}
-                    </div>
-
-                    <button onclick="checkTypedAnswer('${currentItem.cizi}')" class="w-full py-3 duo-btn-green">Zkontrolovat</button>
-                `;
-            }
-
-            document.getElementById('app').innerHTML = `
-                <div class="duo-card bg-white p-8 max-w-lg w-full text-center shadow-lg relative">
-                    <button onclick="openCategory('${window.currentCategory}')" class="absolute top-4 left-4 text-gray-400 font-bold hover:text-gray-600">✕</button>
-                    <div class="mb-4 text-sm font-bold text-gray-400">Položka ${window.currentIndex + 1} / ${items.length}</div>
-                    ${contentHtml}
-                </div>
-            `;
-        }
-
-        window.speakWord = function(text) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            if (window.currentLang === 'polština') utterance.lang = 'pl-PL';
-            else if (window.currentLang === 'němčina') utterance.lang = 'de-DE';
-            else if (window.currentLang === 'japonština') utterance.lang = 'ja-JP';
-            window.speechSynthesis.speak(utterance);
-        }
-
-        window.typeChar = function(char) {
-            const input = document.getElementById('userAnswerInput');
-            if(input) {
-                const start = input.selectionStart;
-                const end = input.selectionEnd;
-                const val = input.value;
-                input.value = val.substring(0, start) + char + val.substring(end);
-                input.selectionStart = input.selectionEnd = start + 1;
-                input.focus();
-            }
-        }
-
-        window.checkCustomAnswer = function(btnElement, selected, correct) {
-            const container = document.getElementById('quizOptionsContainer');
-            const buttons = container.getElementsByTagName('button');
-            
-            for(let b of buttons) {
-                b.style.pointerEvents = 'none';
-                if(b.innerText.trim() === correct.trim()) {
-                    b.classList.add('correct-answer');
-                }
-            }
-
-            if(selected === correct) {
-                window.score++;
-                btnElement.classList.add('correct-answer');
-            } else {
-                btnElement.classList.add('wrong-answer');
-            }
-
-            setTimeout(() => {
-                window.currentIndex++;
-                renderExercise();
-            }, 1200);
-        }
-
-        window.checkTypedAnswer = function(correct) {
-            const val = document.getElementById('userAnswerInput').value.trim();
-            if(val.toLowerCase() === correct.toLowerCase()) {
-                window.score++;
-                alert("Výborně! 🌟");
-            } else {
-                alert(`Nesprávně. Správná odpověď: ${correct}`);
-            }
-            window.currentIndex++;
-            renderExercise();
-        }
-
-        window.startVoiceRecognition = function(correctWord) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if(!SpeechRecognition) {
-                alert("Váš prohlížeč nepodporuje rozpoznávání hlasu.");
-                window.currentIndex++;
-                renderExercise();
-                return;
-            }
-            const recognition = new SpeechRecognition();
-            if (window.currentLang === 'polština') recognition.lang = 'pl-PL';
-            else if (window.currentLang === 'němčina') recognition.lang = 'de-DE';
-            else if (window.currentLang === 'japonština') recognition.lang = 'ja-JP';
-            
-            const btn = document.getElementById('micBtn');
-            btn.classList.add('animate-pulse', 'bg-green-500');
-
-            recognition.onresult = (event) => {
-                const spokenText = event.results[0][0].transcript.toLowerCase();
-                if(spokenText.includes(correctWord.toLowerCase())) {
-                    alert(`Skvělá výslovnost! (Rozpoznáno: ${spokenText})`);
-                    window.score++;
-                } else {
-                    alert(`Zkuste to příště lépe. Řekli jste: "${spokenText}", správně: "${correctWord}"`);
-                }
-                window.currentIndex++;
-                renderExercise();
-            };
-
-            recognition.onerror = () => {
-                alert("Hlas nebyl rozeznán, zkuste to znovu.");
-                btn.classList.remove('animate-pulse', 'bg-green-500');
-            };
-
-            recognition.start();
-        }
-
-        window.renderFinished = function() {
-            document.getElementById('app').innerHTML = `
-                <div class="duo-card bg-white p-8 max-w-md w-full text-center shadow-lg">
-                    <h2 class="text-3xl font-black mb-4 text-gray-700">Lekce dokončena! 🏆</h2>
-                    <p class="text-xl font-bold mb-8 text-gray-500">Skóre: ${window.score} / ${window.learningItems.length}</p>
-                    <button onclick="openCategory('${window.currentCategory}')" class="w-full py-3 duo-btn-green text-lg">Pokračovat</button>
-                </div>
-            `;
-        }
-
-        // --- TAJNÝ ADMIN PANEL ---
-        window.openAdminLogin = function() {
-            const pin = prompt("Zadejte admin heslo:");
-            if(pin === "6852") {
-                window.isAdminMode = true;
-                loadDashboard();
-            } else if(pin !== null) {
-                alert("Nesprávné heslo!");
-            }
-        }
-
-        window.renderAdminPanel = async function() {
-            const lang = window.adminSelectedLang || 'polština';
-            const snapshot = await get(ref(db, `jazyky/${lang}/kategorie`));
-            const categories = snapshot.val() || {};
-
-            let catOptions = '';
-            let selectedCat = window.adminSelectedCat || Object.keys(categories)[0] || 'Pozdravy';
-            
-            for(let c in categories) {
-                catOptions += `<option value="${c}" ${c === selectedCat ? 'selected' : ''}>${c}</option>`;
-            }
-
-            let wordsListHtml = '';
-            if(categories[selectedCat] && categories[selectedCat].slova) {
-                const slovaObj = categories[selectedCat].slova;
-                for(let wordId in slovaObj) {
-                    const item = slovaObj[wordId];
-                    wordsListHtml += `
-                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200">
-                            <div>
-                                <span class="font-bold text-sky-600">${item.slovo}</span> 
-                                <span class="text-gray-400 mx-2">&rarr;</span> 
-                                <span class="font-semibold text-gray-700">${item.preklad}</span>
-                            </div>
-                            <button onclick="adminDeleteWord('${selectedCat}', '${wordId}')" class="bg-red-100 text-red-500 px-3 py-1 rounded-lg font-bold hover:bg-red-200 text-sm">Smazat</button>
-                        </div>
-                    `;
-                }
-            } else {
-                wordsListHtml = `<p class="text-gray-400 text-sm italic">V této kategorii zatím nejsou žádná slova.</p>`;
-            }
-
-            document.getElementById('app').innerHTML = `
-                <div class="duo-card bg-white p-8 max-w-2xl w-full shadow-lg">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-black text-red-500">🛡️ Admin Panel</h2>
-                        <button onclick="loadDashboard()" class="text-gray-400 font-bold hover:text-gray-600">Zpět do appky</button>
-                    </div>
-                    
-                    <div class="space-y-6">
-                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
-                            <h3 class="font-bold text-lg text-gray-700">1. Výběr sekce jazyka</h3>
-                            <div>
-                                <label class="block text-xs font-bold text-gray-400 mb-1">Jazyk</label>
-                                <select id="adminLangSelect" onchange="window.adminSelectedLang = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
-                                    <option value="polština" ${lang === 'polština' ? 'selected' : ''}>Polština</option>
-                                    <option value="němčina" ${lang === 'němčina' ? 'selected' : ''}>Němčina</option>
-                                    <option value="japonština" ${lang === 'japonština' ? 'selected' : ''}>Japonština</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-gray-400 mb-1">Kategorie</label>
-                                <select id="adminCatSelect" onchange="window.adminSelectedCat = this.value; renderAdminPanel();" class="w-full p-2 border rounded-xl font-semibold">
-                                    ${catOptions}
-                                </select>
-                            </div>
-                            <input type="text" id="adminNewCatInput" placeholder="Nebo vytvořit/přepsat novou kategorii..." class="w-full p-2 border rounded-xl font-semibold text-sm">
-                        </div>
-
-                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
-                            <h3 class="font-bold text-lg text-gray-700">2. Přidat nové slovo</h3>
-                            <input type="text" id="adminWord" placeholder="Slovo v cizím jazyce" class="w-full p-2 border rounded-xl font-semibold">
-                            <input type="text" id="adminTranslation" placeholder="Český překlad" class="w-full p-2 border rounded-xl font-semibold">
-                            <button onclick="adminAddWordFullyAutomatic()" class="w-full py-3 duo-btn-green">Přidat slovo (vše se vygeneruje)</button>
-                        </div>
-
-                        <div class="p-4 border-2 border-gray-100 rounded-xl space-y-3">
-                            <div class="flex justify-between items-center">
-                                <h3 class="font-bold text-lg text-gray-700">3. Již vytvořená slova v (${selectedCat})</h3>
-                                <button onclick="adminDeleteCategory('${selectedCat}')" class="text-xs text-red-500 font-bold hover:underline">Smazat celou kategorii</button>
-                            </div>
-                            <div class="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                ${wordsListHtml}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        window.adminAddWordFullyAutomatic = async function() {
-            const lang = document.getElementById('adminLangSelect').value;
-            let cat = document.getElementById('adminNewCatInput').value.trim();
-            if(!cat) {
-                cat = document.getElementById('adminCatSelect').value;
-            }
-            window.adminSelectedCat = cat;
-
-            const word = document.getElementById('adminWord').value.trim();
-            const trans = document.getElementById('adminTranslation').value.trim();
-
-            if(!cat || !word || !trans) {
-                alert("Vyplňte kategorii, slovo i překlad!");
-                return;
-            }
-
-            const newWordRef = push(ref(db, `jazyky/${lang}/kategorie/${cat}/slova`));
-            await set(newWordRef, { slovo: word, preklad: trans });
-
-            const generalRef = ref(db, `jazyky/${lang}/kategorie/Všeobecné/slova`);
-            const generalWordRef = push(generalRef);
-            await set(generalWordRef, { slovo: word, preklad: trans });
-
-            const autoSentenceRef = push(ref(db, `jazyky/${lang}/vety`));
-            await set(autoSentenceRef, { veta: `To je: ${word}`, preklad: `Toto je: ${trans}` });
-
-            const autoTextRef = push(ref(db, `jazyky/${lang}/texty`));
-            await set(autoTextRef, { cj: trans, cizi: word });
-
-            alert("Slovo úspěšně přidáno!");
-            renderAdminPanel();
-        }
-
-        window.adminDeleteWord = async function(category, wordId) {
-            const lang = document.getElementById('adminLangSelect').value;
-            if(confirm("Opravdu smazat toto slovo?")) {
-                await remove(ref(db, `jazyky/${lang}/kategorie/${category}/slova/${wordId}`));
-                renderAdminPanel();
-            }
-        }
-
-        window.adminDeleteCategory = async function(category) {
-            const lang = document.getElementById('adminLangSelect').value;
-            if(confirm(`Opravdu smazat celou kategorii "${category}"?`)) {
-                await remove(ref(db, `jazyky/${lang}/kategorie/${category}`));
-                window.adminSelectedCat = '';
-                renderAdminPanel();
-            }
         }
     </script>
 </body>
