@@ -879,7 +879,7 @@
             }
         }
 
-        // --- SPRÁVA VERZÍ A AKTUALIZACÍ ---
+      // --- SPRÁVA VERZÍ A AKTUALIZACÍ ---
         const APP_VERSION = "1.0";
 
         window.checkAppVersion = function() {
@@ -893,6 +893,9 @@
         };
 
         window.renderVersionModal = function() {
+            // Pokud už okno existuje, nevytvářej ho znova
+            if (document.getElementById('versionModal')) return;
+
             const modalHtml = `
                 <div id="versionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div class="duo-card bg-white p-6 max-w-sm w-full text-center shadow-xl">
@@ -909,7 +912,26 @@
             document.body.insertAdjacentHTML('beforeend', modalHtml);
         };
 
+        // Automatické přidání nenápadného nápisu verze do pravého dolního rohu
+        function injectVersionBadge() {
+            if (document.getElementById('versionBadge')) return;
+            const badge = document.createElement('div');
+            badge.id = 'versionBadge';
+            badge.innerHTML = `v${APP_VERSION}`;
+            badge.style.cssText = "position: fixed; bottom: 8px; right: 12px; font-size: 11px; color: #9ca3af; font-weight: bold; cursor: pointer; z-index: 9999; background: rgba(255,255,255,0.8); padding: 2px 6px; border-radius: 6px;";
+            badge.title = "Klikněte pro zobrazení info o aplikaci";
+            badge.onclick = window.renderVersionModal;
+            document.body.appendChild(badge);
+        }
+
         window.checkAppVersion();
+        
+        // Vloží odznak hned po načtení stránky
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', injectVersionBadge);
+        } else {
+            injectVersionBadge();
+        }
     </script>
 </body>
 </html>
